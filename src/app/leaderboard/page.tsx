@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { formatRankLabel } from "@/lib/rank";
 import { ScoreTrendChart, type TrendPoint } from "@/components/score-trend-chart";
+import { withBasePath } from "@/lib/base-path";
 
 type BoardType = "score" | "rank" | "peak" | "power" | "winrate" | "hero" | "active";
 type ScoreMode = "ranked" | "peak";
@@ -41,7 +42,7 @@ export default function LeaderboardPage() {
   const [seriesLoading, setSeriesLoading] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/leaderboard", {
+    fetch(withBasePath("/api/leaderboard"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "heroes" }),
@@ -62,7 +63,7 @@ export default function LeaderboardPage() {
     const qs = new URLSearchParams({ type, area, limit: "50" });
     if (type === "score") qs.set("scoreMode", scoreMode);
     if (type === "hero" || type === "power") qs.set("hero", hero);
-    fetch(`/api/leaderboard?${qs}`)
+    fetch(withBasePath(`/api/leaderboard?${qs}`))
       .then((r) => r.json())
       .then((json) => {
         if (json.ok) {
@@ -122,7 +123,7 @@ export default function LeaderboardPage() {
         metric,
       });
       if (metric === "combatPower") qs.set("hero", hero);
-      const json = await fetch(`/api/leaderboard?${qs}`).then((r) => r.json());
+      const json = await fetch(withBasePath(`/api/leaderboard?${qs}`)).then((r) => r.json());
       if (json.ok) {
         setSeriesMap((prev) => ({ ...prev, [cacheKey]: json.data.series || [] }));
       }

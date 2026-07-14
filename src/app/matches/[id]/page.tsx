@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
+import { withBasePath } from "@/lib/base-path";
 
 export default function MatchDetailPage() {
   const params = useParams<{ id: string }>();
@@ -29,7 +30,7 @@ export default function MatchDetailPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`/api/matches/${params.id}`)
+    fetch(withBasePath(`/api/matches/${params.id}`))
       .then((r) => r.json())
       .then((json) => {
         if (!json.ok) setError(json.error || "加载失败");

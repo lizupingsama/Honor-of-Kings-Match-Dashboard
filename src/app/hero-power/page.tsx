@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { HeroMeta, PowerQueryResult, PowerZone, RankItem } from "@/lib/hero-power-api";
+import { withBasePath } from "@/lib/base-path";
 
 const ZONES: { value: PowerZone; label: string }[] = [
   { value: "aqq", label: "安卓 QQ" },
@@ -71,7 +72,7 @@ export default function HeroPowerPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/hero-power/heroes");
+        const res = await fetch(withBasePath("/api/hero-power/heroes"));
         const json = await res.json();
         if (!json.ok) {
           if (!cancelled) setHeroesError(json.error || "加载英雄列表失败");
@@ -141,7 +142,7 @@ export default function HeroPowerPage() {
       if (id) params.set("heroId", id);
       else params.set("hero", name);
 
-      const res = await fetch(`/api/hero-power/query?${params}`);
+      const res = await fetch(withBasePath(`/api/hero-power/query?${params}`));
       const json = await res.json();
       if (!json.ok) {
         setError(json.error || "查询失败");

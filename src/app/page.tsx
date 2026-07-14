@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { withBasePath } from "@/lib/base-path";
 
 export default function HomePage() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function HomePage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/lookup", {
+      const res = await fetch(withBasePath("/api/lookup"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nickname: name }),

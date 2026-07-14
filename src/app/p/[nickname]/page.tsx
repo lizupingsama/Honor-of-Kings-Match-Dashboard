@@ -7,6 +7,7 @@ import { OverviewBar } from "@/components/overview-bar";
 import { RankChart } from "@/components/rank-chart";
 import { HeroGrid } from "@/components/hero-grid";
 import { MatchTable } from "@/components/match-table";
+import { withBasePath } from "@/lib/base-path";
 
 type DashData = {
   player: {
@@ -78,7 +79,7 @@ function PlayerDashboard() {
   const load = useCallback(async () => {
     const qs = new URLSearchParams({ range, mode, result });
     if (hero) qs.set("hero", hero);
-    const res = await fetch(`/api/players/${encodeURIComponent(nickname)}?${qs}`);
+    const res = await fetch(withBasePath(`/api/players/${encodeURIComponent(nickname)}?${qs}`));
     const json = await res.json();
     if (!json.ok) {
       setError(json.error || "加载失败");
@@ -101,7 +102,7 @@ function PlayerDashboard() {
     setRefreshing(true);
     setMessage("");
     try {
-      const res = await fetch("/api/lookup", {
+      const res = await fetch(withBasePath("/api/lookup"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nickname, forceRefresh: true }),

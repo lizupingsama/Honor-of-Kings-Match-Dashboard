@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import { withBasePath } from "@/lib/base-path";
 
 type PlayerRow = {
   id: string;
@@ -49,7 +50,7 @@ export default function AdminPage() {
     try {
       const qs = new URLSearchParams();
       if (query.trim()) qs.set("q", query.trim());
-      const res = await fetch(`/api/admin/players?${qs}`);
+      const res = await fetch(withBasePath(`/api/admin/players?${qs}`));
       const json = await res.json();
       if (res.status === 401) {
         router.replace("/admin/login");
@@ -68,7 +69,7 @@ export default function AdminPage() {
   }, [q, router]);
 
   useEffect(() => {
-    fetch("/api/admin/auth")
+    fetch(withBasePath("/api/admin/auth"))
       .then((r) => r.json())
       .then((json) => {
         if (!json.ok || !json.data.authenticated) {
@@ -85,7 +86,7 @@ export default function AdminPage() {
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function logout() {
-    await fetch("/api/admin/auth", { method: "DELETE" });
+    await fetch(withBasePath("/api/admin/auth"), { method: "DELETE" });
     router.replace("/admin/login");
   }
 
@@ -94,7 +95,7 @@ export default function AdminPage() {
     setCreating(true);
     setError("");
     try {
-      const res = await fetch("/api/admin/players", {
+      const res = await fetch(withBasePath("/api/admin/players"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -120,7 +121,7 @@ export default function AdminPage() {
 
   async function onDelete(id: string, name: string) {
     if (!confirm(`确认删除玩家「${name}」及其全部对局与评分历史？`)) return;
-    const res = await fetch(`/api/admin/players/${id}`, { method: "DELETE" });
+    const res = await fetch(withBasePath(`/api/admin/players/${id}`), { method: "DELETE" });
     const json = await res.json();
     if (!json.ok) {
       setError(json.error || "删除失败");
