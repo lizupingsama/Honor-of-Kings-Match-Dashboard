@@ -9,6 +9,24 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_BASE_PATH: basePath,
   },
+  async headers() {
+    const noStore = [
+      {
+        key: "Cache-Control",
+        value: "no-store, no-cache, must-revalidate, proxy-revalidate",
+      },
+    ];
+
+    return [
+      { source: "/", headers: noStore },
+      { source: "/hero-power", headers: noStore },
+      { source: "/leaderboard", headers: noStore },
+      { source: "/admin/:path*", headers: noStore },
+      { source: "/p/:path*", headers: noStore },
+      { source: "/matches/:path*", headers: noStore },
+      { source: "/api/:path*", headers: noStore },
+    ];
+  },
 };
 
 export default nextConfig;
