@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// 以王者游戏昵称为单位的玩家档案（无需本站注册）
+model Player {
+  id            String  @id @default(cuid())
+  /// 王者名称（展示与路由主键）
+  gameNickname  String  @unique
+  /// 营地 ID（拉取战绩用，可与昵称相同哈希生成）
+  campId        String  @unique
+  area          String  @default("wechat") // wechat | qq
+  platform      String  @default("android")
+  gameAvatarUrl String?
+  currentRank   String?
+  currentStars  Int     @default(0)
+  /// 段位换算分（排位榜排序 / 段位曲线用，非 0-110 评分）
+  tierScore     Int     @default(0)
+  /// 排位评分（0–110）
+  rankScore     Int     @default(0)
+  /// 巅峰评分（0–110，不是巅峰分）
+  peakRating    Int     @default(0)
+  /// 巅峰分（巅峰赛积分）
+  peakScore     Int     @default(0)
+  seasonWins    Int     @default(0)
+  seasonGames   Int     @default(0)
+  mvpCount      Int     @default(0)
+  goldCount     Int     @default(0)
+  lastSyncAt    DateTime?
+  lastSyncError String?
+  queryCount    Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  matches           Match[]
+  heroStats         HeroStat[]
+  syncJobs          SyncJob[]
+  scoreHistories    ScoreHistory[]
+  heroPowerHistories HeroPowerHistory[]
+
+  @@index([tierScore])
+  @@index([rankScore])
+  @@index([peakRating])
+  @@index([peakScore])
+  @@index([lastSyncAt])
+}
+
+/// 评分 / 巅峰分 / 胜率快照：以数据录入时间为轴
+model ScoreHistory {
+  id         String   @id @default(cuid())
+  playerId   String
+  player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  /// 数据录入时间（曲线横轴）
+  recordedAt DateTime @default(now())
+  /// 排位评分 0–110
+  rankScore  Int?
+  /// 巅峰评分 0–110
+  peakRating Int?
+  /// 巅峰分
+  peakScore  Int?
+  /// 胜率百分比 0–100
+  winRate    Float?
+  /// sync | manual
+  source     String   @default("manual")
+  note       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([playerId, recordedAt])
+}
+
+/// 英雄战力快照：按玩家+英雄，以录入时间为轴
+model HeroPowerHistory {
+  id          String   @id @default(cuid())
+  playerId    String
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  heroName    String
+  heroId      String?
+  recordedAt  DateTime @default(now())
+  combatPower Int
+  /// sync | manual
+  source      String   @default("manual")
+  note        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([playerId, heroName, recordedAt])
+  @@index([heroName, combatPower])
+}
+
+model Match {
+  id          String   @id @default(cuid())
+  playerId    String
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  externalId  String
+  playedAt    DateTime
+  mode        String
+  modeName    String?
+  heroId      String?
+  heroName    String
+  heroIcon    String?
+  result      String
+  kills       Int      @default(0)
+  deaths      Int      @default(0)
+  assists     Int      @default(0)
+  score       Float?
+  evaluate    String?
+  durationSec Int?
+  rankName    String?
+  stars       Int?
+  rankScore   Int?
+  rankDelta   Int?
+  mvp         Boolean  @default(false)
+  gold        Boolean  @default(false)
+  economy     Int?
+  damage      Int?
+  rawJson     String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([playerId, externalId])
+  @@index([playerId, playedAt])
+  @@index([heroName])
+}
+
+model HeroStat {
+  id          String  @id @default(cuid())
+  playerId    String
+  player      Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  heroId      String?
+  heroName    String
+  heroIcon    String?
+  /// 该英雄当前战力
+  combatPower Int     @default(0)
+  games       Int     @default(0)
+  wins        Int     @default(0)
+  kills       Int     @default(0)
+  deaths      Int     @default(0)
+  assists     Int     @default(0)
+  totalScore  Float   @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([playerId, heroName])
+  @@index([heroName, games])
+  @@index([heroName, combatPower])
+}
+
+model SyncJob {
+  id         String    @id @default(cuid())
+  playerId   String
+  player     Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  status     String
+  message    String?
+  pulled     Int       @default(0)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+}

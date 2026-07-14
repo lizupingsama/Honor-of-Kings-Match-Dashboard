@@ -1,0 +1,66 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function AdminLoginPage() {
+  const router = useRouter();
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        setError(json.error || "登录失败");
+        return;
+      }
+      router.replace("/admin");
+      router.refresh();
+    } catch {
+      setError("网络错误");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-md fade-in">
+      <div className="panel p-6 sm:p-8">
+        <h1 className="text-xl font-semibold text-[var(--gold-bright)]">管理后台登录</h1>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          用于手动增删改玩家评分、巅峰分与英雄战力。
+        </p>
+        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+          <div>
+            <label className="label" htmlFor="password">
+              管理员密码
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoFocus
+              required
+            />
+          </div>
+          {error && <p className="text-sm text-[var(--crimson)]">{error}</p>}
+          <button type="submit" className="btn btn-primary w-full" disabled={loading}>
+            {loading ? "登录中…" : "进入后台"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}

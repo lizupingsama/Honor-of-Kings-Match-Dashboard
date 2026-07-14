@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 王者战绩看板
 
-## Getting Started
+按**王者名称**查询玩家战绩，无需注册登录。
 
-First, run the development server:
+## 快速开始
 
 ```bash
+npm install
+npm run db:setup
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开 http://localhost:3000 ，输入王者名称即可查询。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+演示昵称：`峡谷旅人` / `边路霸主` / `中路法神`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 功能
 
-## Learn More
+- 首页按王者名称查询并同步战绩
+- 玩家页 `/p/王者名称`：段位曲线、英雄统计、对局列表与详情
+- 站内排行榜：评分 / 排位 / 巅峰 / 英雄战力 / 胜率 / 英雄 / 活跃（相互独立）
+  - 评分：模式评分（可切换排位评分 / 巅峰评分，范围 0–110），纵坐标为评分数值
+  - 排位：段位星数、当前排位评分，可展开段位曲线（纵坐标为段位）
+  - 巅峰：巅峰分，可展开巅峰分曲线
+  - 胜率：可展开胜率曲线
+  - 英雄战力需选择英雄，按该英雄战力排名并可展开曲线
+- 管理后台 `/admin`：手动增删改玩家、评分快照与英雄战力（默认密码见 `ADMIN_PASSWORD`）
+- 支持刷新战绩（带冷却）
 
-To learn more about Next.js, take a look at the following resources:
+## 管理后台
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```env
+ADMIN_PASSWORD=admin
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+打开 http://localhost:3000/admin ，用上述密码登录后可：
 
-## Deploy on Vercel
+- 新增 / 编辑 / 删除玩家
+- 维护排位评分、巅峰评分
+- 按英雄维护战力与历史快照（指定录入时间，用于曲线图）
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 数据源
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+默认对接 [极数本源 ApiZero](https://apizero.cn/marketplace/wzry-battle) 王者荣耀战绩查询：
+
+```env
+WZRY_API_PROVIDER=apizero
+WZRY_API_BASE_URL=https://v1.apizero.cn/api/wzry-battle
+WZRY_API_KEY=你的密钥   # https://apizero.cn/account/keys
+```
+
+也可用 `mock` 本地演示，或 `apibyte` / `yujn` 其它第三方。
+
+## 技术栈
+
+Next.js · Prisma · SQLite · Recharts
