@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { HeroPowerApiError } from "./hero-power-api";
 import { PlayerServiceError } from "./player-service";
 import { ZodError } from "zod";
 
@@ -17,6 +18,9 @@ export function handleRouteError(err: unknown) {
       err.status,
       err.retryAfter ? { retryAfter: err.retryAfter } : undefined,
     );
+  }
+  if (err instanceof HeroPowerApiError) {
+    return jsonError(err.message, err.status);
   }
   if (err instanceof ZodError) {
     return jsonError(err.issues[0]?.message || "参数错误", 400);

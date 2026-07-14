@@ -84,7 +84,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="fade-in text-center">
+      <section className="fade-in flex flex-wrap items-center justify-center gap-6 text-center">
+        <Link href="/hero-power" className="btn btn-primary text-sm">
+          英雄战力查询
+        </Link>
         <Link href="/leaderboard" className="text-sm text-[var(--gold)] hover:underline">
           查看站内排行榜 →
         </Link>

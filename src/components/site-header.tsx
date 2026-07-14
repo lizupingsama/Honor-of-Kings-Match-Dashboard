@@ -19,7 +19,10 @@ export function SiteHeader() {
         </Link>
         <nav className="flex flex-wrap items-center justify-end gap-3 text-sm sm:gap-4">
           <Link href="/" className={`nav-link ${pathname === "/" ? "active" : ""}`}>
-            查询
+            战绩
+          </Link>
+          <Link href="/hero-power" className={`nav-link ${active("/hero-power")}`}>
+            战力查询
           </Link>
           <Link href="/leaderboard" className={`nav-link ${active("/leaderboard")}`}>
             排行榜

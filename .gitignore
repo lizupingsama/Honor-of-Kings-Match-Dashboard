@@ -48,3 +48,6 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# 抓包产物（含 token，勿提交）
+/scripts/captures/

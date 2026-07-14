@@ -17,6 +17,7 @@ npm run dev
 ## 功能
 
 - 首页按王者名称查询并同步战绩
+- 英雄战力查询 `/hero-power`：按英雄 + 区服查看全国省标 / 市标 / 县标门槛
 - 玩家页 `/p/王者名称`：段位曲线、英雄统计、对局列表与详情
 - 站内排行榜：评分 / 排位 / 巅峰 / 英雄战力 / 胜率 / 英雄 / 活跃（相互独立）
   - 评分：模式评分（可切换排位评分 / 巅峰评分，范围 0–110），纵坐标为评分数值
@@ -50,6 +51,14 @@ WZRY_API_KEY=你的密钥   # https://apizero.cn/account/keys
 ```
 
 也可用 `mock` 本地演示，或 `apibyte` / `yujn` 其它第三方。
+
+全国英雄战力查询（`/hero-power`）使用同一平台的战力接口，默认可匿名调用：
+
+```env
+# 可选覆盖；默认 https://v1.apizero.cn/api/wzry
+# WZRY_POWER_API_BASE_URL="https://v1.apizero.cn/api/wzry"
+# 生产环境建议填写 WZRY_API_KEY，避免匿名额度不足
+```
 
 ## 技术栈
 
