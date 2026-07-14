@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Noto_Sans_SC, ZCOOL_XiaoWei } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
+import { BasePathProvider } from "@/components/base-path-provider";
 
 const display = Noto_Sans_SC({
   variable: "--font-display",
@@ -25,14 +26,29 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const basePath = (
+    process.env.NEXT_BASE_PATH ||
+    process.env.NEXT_PUBLIC_BASE_PATH ||
+    ""
+  ).replace(/\/$/, "");
+
   return (
     <html lang="zh-CN" className={`${display.variable} ${titleFont.variable} h-full`}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__WZRY_BASE_PATH__=${JSON.stringify(basePath)};`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col antialiased">
-        <SiteHeader />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
-        <footer className="border-t border-[var(--line)] py-6 text-center text-xs text-[var(--muted)]">
-          输入王者名称即可查询 · 站内榜仅统计曾被查询同步过的玩家 · 非官方全服数据
-        </footer>
+        <BasePathProvider basePath={basePath}>
+          <SiteHeader />
+          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
+          <footer className="border-t border-[var(--line)] py-6 text-center text-xs text-[var(--muted)]">
+            输入王者名称即可查询 · 站内榜仅统计曾被查询同步过的玩家 · 非官方全服数据
+          </footer>
+        </BasePathProvider>
       </body>
     </html>
   );
