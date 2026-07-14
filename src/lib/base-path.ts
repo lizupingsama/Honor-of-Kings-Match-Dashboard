@@ -2,7 +2,8 @@ let clientBasePath = "";
 
 /** 由 BasePathProvider 在渲染时注入（优先于 env / URL 推断） */
 export function setClientBasePath(basePath: string) {
-  clientBasePath = (basePath || "").replace(/\/$/, "");
+  const normalized = normalizeBasePath(basePath);
+  clientBasePath = normalized || inferBrowserBasePath();
   if (typeof window !== "undefined") {
     (window as unknown as { __WZRY_BASE_PATH__?: string }).__WZRY_BASE_PATH__ = clientBasePath;
   }
@@ -10,7 +11,7 @@ export function setClientBasePath(basePath: string) {
 
 /**
  * 生产挂子路径时与 next.config basePath 对齐。
- * 优先级：Provider 注入 > 构建期 env > window.__WZRY_BASE_PATH__ > URL/_next 推断
+ * 优先级：Provider/URL 推断缓存 > window.__WZRY_BASE_PATH__ > 构建期 env > URL/_next 推断
  */
 export function withBasePath(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
@@ -23,12 +24,20 @@ function resolveBasePath(): string {
 
   if (typeof window !== "undefined") {
     const fromWindow = (window as unknown as { __WZRY_BASE_PATH__?: string }).__WZRY_BASE_PATH__;
-    if (fromWindow) return fromWindow.replace(/\/$/, "");
+    if (fromWindow) return normalizeBasePath(fromWindow);
   }
 
-  const fromEnv = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/$/, "");
+  const fromEnv = normalizeBasePath(process.env.NEXT_PUBLIC_BASE_PATH || "");
   if (fromEnv) return fromEnv;
 
+  return inferBrowserBasePath();
+}
+
+function normalizeBasePath(basePath: string): string {
+  return (basePath || "").replace(/\/$/, "");
+}
+
+function inferBrowserBasePath(): string {
   if (typeof window === "undefined") return "";
 
   const script = document.querySelector('script[src*="/_next/"]') as HTMLScriptElement | null;
