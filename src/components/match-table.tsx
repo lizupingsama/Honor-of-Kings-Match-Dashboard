@@ -97,7 +97,9 @@ export function MatchTable({ matches }: { matches: MatchRow[] }) {
   }
 
   return (
-    <div className="-mx-5 overflow-x-auto px-5">
+    <>
+      <p className="mb-2 text-xs text-[var(--muted)] sm:hidden">左右滑动表格查看更多列</p>
+      <div className="-mx-5 overflow-x-auto px-5">
       <table className="table">
         <thead>
           <tr>
@@ -164,6 +166,7 @@ export function MatchTable({ matches }: { matches: MatchRow[] }) {
           })}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   );
 }

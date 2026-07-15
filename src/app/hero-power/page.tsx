@@ -345,6 +345,7 @@ export default function HeroPowerPage() {
             />
           </div>
 
+          <p className="text-xs text-[var(--muted)] sm:hidden">左右滑动表格查看更多列</p>
           <div className="panel overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
