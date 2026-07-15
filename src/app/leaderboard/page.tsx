@@ -453,10 +453,15 @@ export default function LeaderboardPage() {
                         <div className="text-sm text-[var(--gold)]">#{row.rank}</div>
                         <Link
                           href={`/p/${encodeURIComponent(row.gameNickname)}`}
-                          className="mt-1 block break-words text-lg font-semibold text-[var(--gold-bright)]"
+                          className="group mt-1 inline-flex min-w-0 flex-wrap items-center gap-2 text-[var(--gold-bright)]"
                           aria-label={`进入 ${row.gameNickname} 的主页`}
                         >
-                          {row.gameNickname}
+                          <span className="break-words text-lg font-semibold">
+                            {row.gameNickname}
+                          </span>
+                          <span className="rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[10px] leading-none text-[var(--muted)] transition group-hover:border-[var(--gold)] group-hover:text-[var(--gold-bright)]">
+                            主页 ↗
+                          </span>
                         </Link>
                       </div>
                       {expandable && (
