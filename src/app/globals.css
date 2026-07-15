@@ -29,6 +29,7 @@
 html,
 body {
   min-height: 100%;
+  overflow-x: clip;
 }
 
 body {
@@ -67,6 +68,7 @@ a {
   transition: transform 0.15s ease, background 0.2s ease, opacity 0.2s ease;
   cursor: pointer;
   border: none;
+  white-space: nowrap;
 }
 
 .btn:hover {
@@ -98,6 +100,7 @@ a {
 
 .input {
   width: 100%;
+  min-width: 0;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(11, 18, 32, 0.7);
@@ -183,6 +186,11 @@ a {
   font-weight: 500;
 }
 
+.table th,
+.table td {
+  vertical-align: middle;
+}
+
 .fade-in {
   animation: fadeUp 0.45s ease both;
 }
@@ -206,4 +214,24 @@ a {
 .nav-link:hover,
 .nav-link.active {
   color: var(--gold-bright);
+}
+
+@media (max-width: 640px) {
+  .panel {
+    border-radius: 14px;
+  }
+
+  .btn {
+    padding-inline: 1rem;
+  }
+
+  .table {
+    min-width: 42rem;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.65rem 0.5rem;
+    white-space: nowrap;
+  }
 }

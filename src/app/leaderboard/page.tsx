@@ -280,7 +280,7 @@ export default function LeaderboardPage() {
             </button>
           ))}
         <select
-          className="input !w-auto"
+          className="input !w-auto max-sm:flex-1"
           value={area}
           onChange={(e) => setArea(e.target.value)}
         >
@@ -290,7 +290,7 @@ export default function LeaderboardPage() {
         </select>
         {needHero && (
           <select
-            className="input !w-auto"
+            className="input !w-auto max-sm:flex-1"
             value={hero}
             onChange={(e) => setHero(e.target.value)}
           >
@@ -303,7 +303,7 @@ export default function LeaderboardPage() {
         )}
         {type === "hero" && (
           <select
-            className="input !w-auto"
+            className="input !w-auto max-sm:flex-1"
             value={heroSortBy}
             onChange={(e) => setHeroSortBy(e.target.value as HeroSortBy)}
             title="英雄榜排序"
@@ -317,7 +317,7 @@ export default function LeaderboardPage() {
         )}
         {type === "winrate" && (
           <select
-            className="input !w-auto"
+            className="input !w-auto max-sm:flex-1"
             value={winRateSortBy}
             onChange={(e) => setWinRateSortBy(e.target.value as WinRateSortBy)}
             title="胜率榜排序"
@@ -328,7 +328,7 @@ export default function LeaderboardPage() {
         )}
         {type === "kda" && (
           <select
-            className="input !w-auto"
+            className="input !w-auto max-sm:flex-1"
             value={kdaSortBy}
             onChange={(e) => setKdaSortBy(e.target.value as KdaSortBy)}
             title="KDA榜排序"
@@ -372,7 +372,7 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      <div className="panel overflow-hidden">
+      <div className="panel overflow-x-auto">
         {loading ? (
           <div className="p-8 text-center text-[var(--muted)]">加载中…</div>
         ) : rows.length === 0 ? (
@@ -458,11 +458,11 @@ export default function LeaderboardPage() {
                       <td>
                         <Link
                           href={`/p/${encodeURIComponent(row.gameNickname)}`}
-                          className="group inline-flex items-center gap-2 hover:text-[var(--gold-bright)]"
+                          className="group inline-flex min-w-0 items-center gap-2 hover:text-[var(--gold-bright)]"
                           aria-label={`进入 ${row.gameNickname} 的主页`}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <span className="font-medium underline decoration-[var(--line)] decoration-dotted underline-offset-4 group-hover:decoration-[var(--gold-bright)]">
+                          <span className="max-w-32 truncate font-medium underline decoration-[var(--line)] decoration-dotted underline-offset-4 group-hover:decoration-[var(--gold-bright)] sm:max-w-none">
                             {row.gameNickname}
                           </span>
                           <span className="rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[10px] leading-none text-[var(--muted)] transition group-hover:border-[var(--gold)] group-hover:text-[var(--gold-bright)]">
@@ -536,7 +536,7 @@ export default function LeaderboardPage() {
                     {expandable && isOpen && metric && (
                       <tr className="bg-black/20">
                         <td colSpan={8} className="!py-4">
-                          <div className="px-2">
+                          <div className="min-w-0 px-2">
                             <div className="mb-2 text-sm text-[var(--muted)]">
                               {row.gameNickname} · {chartTitle()}
                             </div>

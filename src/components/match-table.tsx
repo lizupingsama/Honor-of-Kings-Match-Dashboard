@@ -97,7 +97,7 @@ export function MatchTable({ matches }: { matches: MatchRow[] }) {
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="-mx-5 overflow-x-auto px-5">
       <table className="table">
         <thead>
           <tr>
@@ -124,7 +124,7 @@ export function MatchTable({ matches }: { matches: MatchRow[] }) {
               <td>
                 <Link
                   href={`/matches/${m.id}`}
-                  className="inline-flex items-center gap-2 hover:text-[var(--gold-bright)]"
+                  className="inline-flex min-w-0 items-center gap-2 hover:text-[var(--gold-bright)]"
                 >
                   {m.heroIcon ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -134,7 +134,7 @@ export function MatchTable({ matches }: { matches: MatchRow[] }) {
                       className="h-6 w-6 shrink-0 rounded-full object-cover"
                     />
                   ) : null}
-                  {m.heroName}
+                  <span className="max-w-24 truncate sm:max-w-none">{m.heroName}</span>
                 </Link>
               </td>
               <td className="text-[var(--muted)]">{m.modeName || m.mode || "-"}</td>

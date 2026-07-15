@@ -208,7 +208,7 @@ function PlayerDashboard() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-black/25 px-2.5 py-1 text-sm">
             <span className="text-[var(--muted)]">营地 ID</span>
             <span className="font-medium tabular-nums tracking-wide text-[var(--text)]">
@@ -218,7 +218,7 @@ function PlayerDashboard() {
             </span>
           </div>
           <h1 className="mt-2 flex flex-wrap items-center gap-3 text-2xl font-semibold text-[var(--gold-bright)]">
-            <span>{data.player.gameNickname}</span>
+            <span className="min-w-0 break-words">{data.player.gameNickname}</span>
             <PlayerLikeButton
               nickname={data.player.gameNickname}
               initialCount={data.player.likeCount ?? 0}
@@ -230,14 +230,14 @@ function PlayerDashboard() {
             </p>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/" className="btn btn-ghost">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Link href="/" className="btn btn-ghost flex-1 sm:flex-none">
             查其他人
           </Link>
-          <button className="btn btn-ghost" onClick={share}>
+          <button className="btn btn-ghost flex-1 sm:flex-none" onClick={share}>
             分享
           </button>
-          <button className="btn btn-primary" onClick={refresh} disabled={refreshing}>
+          <button className="btn btn-primary flex-1 sm:flex-none" onClick={refresh} disabled={refreshing}>
             {refreshing ? "刷新中…" : "刷新战绩"}
           </button>
         </div>
@@ -266,7 +266,7 @@ function PlayerDashboard() {
             </p>
           </div>
           <select
-            className="input !w-auto"
+            className="input !w-auto max-sm:w-full"
             value={range}
             onChange={(e) => setRange(e.target.value)}
           >
@@ -301,7 +301,7 @@ function PlayerDashboard() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-semibold text-[var(--gold-bright)]">英雄使用</h2>
           <select
-            className="input !w-auto"
+            className="input !w-auto max-sm:w-full"
             value={heroSort}
             onChange={(e) => setHeroSort(e.target.value as typeof heroSort)}
           >
@@ -333,9 +333,9 @@ function PlayerDashboard() {
               </span>
             ) : null}
           </h2>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
             <select
-              className="input !w-auto"
+              className="input !w-auto max-sm:w-full"
               value={mode}
               onChange={(e) => setMode(e.target.value)}
             >
@@ -345,7 +345,7 @@ function PlayerDashboard() {
               <option value="fun">娱乐</option>
             </select>
             <select
-              className="input !w-auto"
+              className="input !w-auto max-sm:w-full"
               value={result}
               onChange={(e) => setResult(e.target.value)}
             >
@@ -354,7 +354,7 @@ function PlayerDashboard() {
               <option value="lose">失败</option>
             </select>
             <select
-              className="input !w-auto"
+              className="input !w-auto max-sm:w-full"
               value={side}
               onChange={(e) => setSide(e.target.value)}
             >
@@ -363,7 +363,7 @@ function PlayerDashboard() {
               <option value="red">红方</option>
             </select>
             {hero && (
-              <button className="btn btn-ghost !py-2" onClick={clearHero}>
+              <button className="btn btn-ghost !py-2 max-sm:col-span-2" onClick={clearHero}>
                 清除英雄筛选
               </button>
             )}

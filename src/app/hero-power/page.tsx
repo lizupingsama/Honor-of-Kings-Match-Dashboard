@@ -302,18 +302,18 @@ export default function HeroPowerPage() {
                 {selectedHero || result.hero.ename ? ` · ID ${result.hero.ename}` : ""}
               </p>
             </div>
-            <div className="flex gap-6 text-sm">
-              <div className="min-w-0 text-right">
+            <div className="grid w-full grid-cols-2 gap-4 text-sm sm:w-auto sm:flex sm:gap-6">
+              <div className="min-w-0 sm:text-right">
                 <div className="text-[var(--muted)]">本页最低</div>
                 <div className="text-lg text-[var(--teal)]">{minRow?.rank ?? "—"}</div>
-                <div className="max-w-[10rem] truncate text-xs text-[var(--muted)]" title={minRow?.address}>
+                <div className="truncate text-xs text-[var(--muted)] sm:max-w-[10rem]" title={minRow?.address}>
                   {minRow?.address || "—"}
                 </div>
               </div>
               <div className="min-w-0 text-right">
                 <div className="text-[var(--muted)]">本页最高</div>
                 <div className="text-lg text-[var(--gold-bright)]">{maxRow?.rank ?? "—"}</div>
-                <div className="max-w-[10rem] truncate text-xs text-[var(--muted)]" title={maxRow?.address}>
+                <div className="truncate text-xs text-[var(--muted)] sm:max-w-[10rem]" title={maxRow?.address}>
                   {maxRow?.address || "—"}
                 </div>
               </div>
@@ -321,13 +321,13 @@ export default function HeroPowerPage() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-2">
+            <div className="flex w-full gap-2 sm:w-auto">
               {LEVEL_TABS.map((tab) => (
                 <button
                   key={tab.key}
                   type="button"
                   onClick={() => setLevel(tab.key)}
-                  className={`rounded-full px-4 py-1.5 text-sm transition ${
+                  className={`flex-1 rounded-full px-4 py-1.5 text-sm transition sm:flex-none ${
                     level === tab.key
                       ? "bg-[var(--gold)] text-[#1a1408]"
                       : "border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]"
@@ -338,7 +338,7 @@ export default function HeroPowerPage() {
               ))}
             </div>
             <input
-              className="input max-w-xs"
+              className="input sm:max-w-xs"
               value={regionFilter}
               onChange={(e) => setRegionFilter(e.target.value)}
               placeholder="筛选地区，如：广东"

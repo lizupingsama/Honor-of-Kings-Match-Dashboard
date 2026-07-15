@@ -42,7 +42,7 @@ export function HeroGrid({
               </div>
               <span className="chip shrink-0">{h.games} 场</span>
             </div>
-            <div className="mt-3 flex justify-between text-sm text-[var(--muted)]">
+            <div className="mt-3 flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm text-[var(--muted)]">
               <span>胜率 {h.winRate}%</span>
               {h.avgKda != null && <span>KDA {h.avgKda}</span>}
               {h.avgScore != null && <span>评分 {h.avgScore}</span>}
