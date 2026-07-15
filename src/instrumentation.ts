@@ -1,5 +1,5 @@
 /**
- * Next.js 启动钩子：冷却到期后自动同步榜上玩家。
+ * Next.js 启动钩子：按配置间隔自动同步到期玩家。
  * @see https://nextjs.org/docs/app/api-reference/file-conventions/instrumentation
  */
 
@@ -19,21 +19,21 @@ export async function register() {
   if (g.__wzryAutoSyncStarted) return;
   g.__wzryAutoSyncStarted = true;
 
-  const { getCooldownSeconds, getAutoSyncBatchSize, autoSyncStalePlayers } =
+  const { getAutoSyncIntervalSeconds, autoSyncStalePlayers } =
     await import("./lib/player-service");
 
-  const intervalMs = Math.max(60, getCooldownSeconds()) * 1000;
+  const intervalMs = getAutoSyncIntervalSeconds() * 1000;
   let running = false;
 
   const tick = async () => {
     if (running) return;
     running = true;
     try {
-      const results = await autoSyncStalePlayers(getAutoSyncBatchSize());
+      const results = await autoSyncStalePlayers();
       if (results.length) {
         const ok = results.filter((r) => r.ok).length;
         console.info(
-          `[auto-sync] synced ${ok}/${results.length} leaderboard players`,
+          `[auto-sync] synced ${ok}/${results.length} players`,
         );
       }
     } catch (err) {

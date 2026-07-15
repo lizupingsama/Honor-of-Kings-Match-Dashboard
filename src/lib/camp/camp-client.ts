@@ -30,6 +30,9 @@ function mapCampError(err: unknown): never {
     if (err.code === "not_found") {
       throw new WzryApiError(err.message, "not_found");
     }
+    if (err.code === "rate_limit") {
+      throw new WzryApiError(err.message, "rate_limit");
+    }
     throw new WzryApiError(err.message, "upstream");
   }
   if (err instanceof WzryApiError) throw err;

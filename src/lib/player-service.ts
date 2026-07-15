@@ -4,17 +4,29 @@ import { parseRankScore } from "./rank";
 import { recordScoreSnapshot } from "./score-history";
 
 const COOLDOWN = Number(process.env.SYNC_COOLDOWN_SECONDS || "300") || 300;
-const AUTO_SYNC_BATCH_SIZE = Math.max(
-  1,
-  Number(process.env.AUTO_SYNC_BATCH_SIZE || "10") || 10,
+const AUTO_SYNC_INTERVAL_SECONDS = Math.max(
+  60,
+  Number(process.env.AUTO_SYNC_INTERVAL_SECONDS || "3600") || 3600,
+);
+const AUTO_SYNC_PLAYER_DELAY_SECONDS = Math.max(
+  0,
+  Number(process.env.AUTO_SYNC_PLAYER_DELAY_SECONDS || "5") || 5,
 );
 
 export function getCooldownSeconds() {
   return COOLDOWN;
 }
 
-export function getAutoSyncBatchSize() {
-  return AUTO_SYNC_BATCH_SIZE;
+export function getAutoSyncIntervalSeconds() {
+  return AUTO_SYNC_INTERVAL_SECONDS;
+}
+
+export function getAutoSyncPlayerDelaySeconds() {
+  return AUTO_SYNC_PLAYER_DELAY_SECONDS;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class PlayerServiceError extends Error {
@@ -585,34 +597,24 @@ export async function getPlayerDashboard(
 }
 
 /**
- * 冷却到期后同步榜上相关玩家（有排位/巅峰分/评分等字段）。
- * 最久未同步优先，默认每轮 AUTO_SYNC_BATCH_SIZE 条。
+ * 自动同步到期玩家。默认每轮同步全部到期玩家，并在玩家之间等待，
+ * 避免连续请求触发营地频控。
  */
-export async function autoSyncStalePlayers(limit = AUTO_SYNC_BATCH_SIZE) {
-  const batch = Math.max(1, limit);
-  const cutoff = new Date(Date.now() - COOLDOWN * 1000);
+export async function autoSyncStalePlayers(limit?: number) {
+  const take =
+    Number.isFinite(limit) && limit != null && limit > 0 ? Math.max(1, limit) : undefined;
+  const cutoff = new Date(Date.now() - AUTO_SYNC_INTERVAL_SECONDS * 1000);
   const players = await prisma.player.findMany({
     where: {
-      AND: [
-        {
-          OR: [
-            { tierScore: { gt: 0 } },
-            { peakScore: { gt: 0 } },
-            { rankScore: { gt: 0 } },
-            { peakRating: { gt: 0 } },
-          ],
-        },
-        {
-          OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: cutoff } }],
-        },
-      ],
+      OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: cutoff } }],
     },
-    take: batch,
+    ...(take ? { take } : {}),
     orderBy: { lastSyncAt: "asc" },
   });
 
   const results: { nickname: string; ok: boolean; message: string }[] = [];
-  for (const p of players) {
+  for (let i = 0; i < players.length; i++) {
+    const p = players[i];
     try {
       const campId = p.campId.includes(":") ? p.campId.split(":")[0] : p.campId;
       await lookupPlayerByCampId(campId, { forceRefresh: true });
@@ -623,6 +625,10 @@ export async function autoSyncStalePlayers(limit = AUTO_SYNC_BATCH_SIZE) {
         ok: false,
         message: e instanceof Error ? e.message : "failed",
       });
+    }
+
+    if (i < players.length - 1 && AUTO_SYNC_PLAYER_DELAY_SECONDS > 0) {
+      await sleep(AUTO_SYNC_PLAYER_DELAY_SECONDS * 1000);
     }
   }
   return results;

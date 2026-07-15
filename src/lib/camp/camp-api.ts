@@ -60,7 +60,7 @@ const DEFAULTS: AuthDefaults = {
 };
 
 export class CampApiError extends Error {
-  code: "auth" | "hidden" | "upstream" | "not_found";
+  code: "auth" | "hidden" | "rate_limit" | "upstream" | "not_found";
   constructor(message: string, code: CampApiError["code"] = "upstream") {
     super(message);
     this.code = code;
@@ -284,12 +284,16 @@ async function request(endpoint: string, body: Record<string, unknown>) {
     }
 
     const code = Number(data.returnCode ?? 0);
+    const message = str(data.returnMsg || data.message || data.msg);
     if (code === -10107) {
       throw new CampApiError("召唤师隐藏了个人战绩，请在王者营地开放战绩后重试", "hidden");
     }
+    if (code === -30107 || message.includes("操作频繁") || message.includes("请求频繁")) {
+      throw new CampApiError("操作频繁，请稍后重试", "rate_limit");
+    }
     if (code !== 0 && code !== 200) {
       throw new CampApiError(
-        str(data.returnMsg || data.message || data.msg) || `营地接口错误 (${code})`,
+        message || `营地接口错误 (${code})`,
         "upstream",
       );
     }

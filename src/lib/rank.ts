@@ -6,10 +6,11 @@ const RANK_BASE: Record<string, number> = {
   黄金: 200,
   铂金: 300,
   黄金星耀: 300, // alias
-  星耀: 400,
-  王者: 500,
-  荣耀王者: 500,
-  最强王者: 500,
+  钻石: 400,
+  星耀: 500,
+  王者: 600,
+  荣耀王者: 600,
+  最强王者: 600,
 };
 
 const TIER_OFFSET: Record<string, number> = {
@@ -33,7 +34,7 @@ export function parseRankScore(rankName: string | null | undefined, stars = 0): 
 
   // 王者 / 荣耀王者 / 最强王者 — stars count directly
   if (name.includes("王者")) {
-    const base = 500;
+    const base = 600;
     return base + Math.max(0, starCount);
   }
 
@@ -68,8 +69,9 @@ export function formatRankLabel(rankName: string | null | undefined, stars = 0):
 }
 
 export function scoreToApproxLabel(score: number): string {
-  if (score >= 500) return `王者 ${score - 500}星`;
-  if (score >= 400) return "星耀";
+  if (score >= 600) return `王者 ${score - 600}星`;
+  if (score >= 500) return "星耀";
+  if (score >= 400) return "钻石";
   if (score >= 300) return "铂金";
   if (score >= 200) return "黄金";
   if (score >= 100) return "白银";
