@@ -345,9 +345,36 @@ export default function HeroPowerPage() {
             />
           </div>
 
-          <p className="text-xs text-[var(--muted)] sm:hidden">左右滑动表格查看更多列</p>
-          <div className="panel overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <div className="panel overflow-hidden">
+            <div className="space-y-3 p-3 sm:hidden">
+              {rows.length === 0 ? (
+                <div className="py-8 text-center text-[var(--muted)]">暂无数据</div>
+              ) : (
+                rows.map((row, i) => (
+                  <div
+                    key={`mobile-${row.adcode || row.address}-${row.rank}`}
+                    className="rounded-2xl border border-[var(--line)] bg-black/15 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs text-[var(--muted)]">地区</div>
+                        <div className="mt-1 break-words text-lg font-semibold text-[var(--text)]">
+                          {row.address}
+                        </div>
+                      </div>
+                      <span className="chip shrink-0">#{i + 1}</span>
+                    </div>
+                    <div className="mt-4 rounded-xl bg-black/20 p-3">
+                      <div className="text-xs text-[var(--muted)]">战力门槛</div>
+                      <div className="mt-1 text-xl font-semibold text-[var(--gold-bright)]">
+                        {row.rank}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <table className="w-full text-left text-sm max-sm:hidden">
               <thead>
                 <tr className="border-b border-[var(--line)] text-[var(--muted)]">
                   <th className="px-4 py-3 font-medium">#</th>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { formatRankLabel } from "@/lib/rank";
 import { ScoreTrendChart, type TrendPoint } from "@/components/score-trend-chart";
@@ -372,8 +373,7 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      <p className="text-xs text-[var(--muted)] sm:hidden">左右滑动表格查看更多列</p>
-      <div className="panel overflow-x-auto">
+      <div className="panel overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-[var(--muted)]">加载中…</div>
         ) : rows.length === 0 ? (
@@ -389,7 +389,126 @@ export default function LeaderboardPage() {
             录入数据。
           </div>
         ) : (
-          <table className="table">
+          <>
+            <div className="space-y-3 p-3 sm:hidden">
+              {rows.map((row) => {
+                const isOpen = expanded === row.gameNickname;
+                const metric = activeMetric();
+                const cacheKey = metric ? cacheKeyFor(row.gameNickname, metric) : "";
+                const scoreValue =
+                  scoreMode === "ranked" ? (row.rankScore ?? 0) : (row.peakRating ?? 0);
+                const detailItems: Array<[string, ReactNode]> = [
+                  [
+                    "区服",
+                    row.area === "qq" ? "QQ" : row.area === "wechat" ? "微信" : "-",
+                  ],
+                ];
+
+                if (type === "score") detailItems.push(["评分", scoreValue]);
+                if (type === "rank") {
+                  detailItems.push([
+                    "段位星数",
+                    formatRankLabel(row.currentRank, row.currentStars ?? 0),
+                  ]);
+                }
+                if (type === "peak") detailItems.push(["巅峰分数", row.peakScore ?? 0]);
+                if (type === "power") {
+                  detailItems.push(["英雄战力", row.combatPower ?? 0], ["场次", row.games ?? 0]);
+                }
+                if (type === "winrate" || type === "hero") {
+                  detailItems.push(["胜率", `${row.winRate}%`]);
+                }
+                if (type === "hero") {
+                  detailItems.push(
+                    ["场次", row.games],
+                    ["KDA", row.avgKda],
+                    ["评分", row.avgScore],
+                    ["综合", row.composite ?? 0],
+                  );
+                }
+                if (type === "winrate") {
+                  detailItems.push(["胜场", row.seasonWins ?? 0], ["场次", row.seasonGames]);
+                }
+                if (type === "avgscore") {
+                  detailItems.push(["平均评分", row.avgScore ?? 0], ["近期场次", row.games ?? 0]);
+                }
+                if (type === "kda") {
+                  detailItems.push(
+                    ["KDA", row.avgKda ?? 0],
+                    ["场均击杀", row.avgKills ?? 0],
+                    ["场均死亡", row.avgDeaths ?? 0],
+                    ["场均助攻", row.avgAssists ?? 0],
+                    ["近期场次", row.games ?? 0],
+                  );
+                }
+                if (type === "active") detailItems.push(["赛季场次(排位)", row.games]);
+
+                return (
+                  <div
+                    key={`mobile-${row.rank}-${row.gameNickname}`}
+                    className="rounded-2xl border border-[var(--line)] bg-black/15 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm text-[var(--gold)]">#{row.rank}</div>
+                        <Link
+                          href={`/p/${encodeURIComponent(row.gameNickname)}`}
+                          className="mt-1 block break-words text-lg font-semibold text-[var(--gold-bright)]"
+                          aria-label={`进入 ${row.gameNickname} 的主页`}
+                        >
+                          {row.gameNickname}
+                        </Link>
+                      </div>
+                      {expandable && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost shrink-0 !px-3 !py-1.5 text-xs"
+                          onClick={() => toggleExpand(row.gameNickname)}
+                        >
+                          {isOpen ? "收起曲线" : "查看曲线"}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      {detailItems.map(([label, value]) => (
+                        <div key={label} className="min-w-0 rounded-xl bg-black/20 p-3">
+                          <div className="text-xs text-[var(--muted)]">{label}</div>
+                          <div className="mt-1 break-words font-medium text-[var(--text)]">
+                            {value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {expandable && isOpen && metric && (
+                      <div className="mt-4 border-t border-white/10 pt-4">
+                        <div className="mb-2 text-sm text-[var(--muted)]">
+                          {row.gameNickname} · {chartTitle()}
+                        </div>
+                        {seriesLoading === cacheKey ? (
+                          <div className="py-10 text-center text-sm text-[var(--muted)]">
+                            加载曲线…
+                          </div>
+                        ) : type === "rank" ? (
+                          <RankChart data={rankSeriesMap[cacheKey] || []} />
+                        ) : (
+                          <ScoreTrendChart
+                            data={seriesMap[cacheKey] || []}
+                            metric={metric === "tierScore" ? "rankScore" : metric}
+                            yAsRankLabel={false}
+                            yDomain={
+                              type === "score" ? [0, 110] : type === "winrate" ? [0, 100] : undefined
+                            }
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <table className="table max-sm:hidden">
             <thead>
               <tr>
                 <th>#</th>
@@ -570,6 +689,7 @@ export default function LeaderboardPage() {
               })}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </div>

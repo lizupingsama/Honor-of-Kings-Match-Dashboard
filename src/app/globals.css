@@ -225,13 +225,8 @@ a {
     padding-inline: 1rem;
   }
 
-  .table {
-    min-width: 42rem;
-  }
-
   .table th,
   .table td {
     padding: 0.65rem 0.5rem;
-    white-space: nowrap;
   }
 }
