@@ -288,7 +288,7 @@ async function recomputeRankDeltas(playerId: string) {
 /** 按营地 ID 查询并同步战绩到本地 */
 export async function lookupPlayerByCampId(
   campIdRaw: string,
-  opts?: { forceRefresh?: boolean },
+  opts?: { forceRefresh?: boolean; ignoreCooldown?: boolean },
 ) {
   const campId = campIdRaw.trim();
   if (!/^\d{5,15}$/.test(campId)) {
@@ -351,7 +351,7 @@ export async function lookupPlayerByCampId(
   }
 
   if (needRefresh) {
-    if (opts?.forceRefresh && player.lastSyncAt) {
+    if (opts?.forceRefresh && !opts.ignoreCooldown && player.lastSyncAt) {
       const elapsed = (Date.now() - player.lastSyncAt.getTime()) / 1000;
       if (elapsed < COOLDOWN) {
         const wait = Math.ceil(COOLDOWN - elapsed);
@@ -612,12 +612,30 @@ export async function autoSyncStalePlayers(limit?: number) {
     orderBy: { lastSyncAt: "asc" },
   });
 
+  return syncPlayers(players);
+}
+
+export async function syncAllPlayers() {
+  const players = await prisma.player.findMany({
+    orderBy: { lastSyncAt: "asc" },
+  });
+
+  return syncPlayers(players, { ignoreCooldown: true });
+}
+
+async function syncPlayers(
+  players: Array<{ gameNickname: string; campId: string }>,
+  opts?: { ignoreCooldown?: boolean },
+) {
   const results: { nickname: string; ok: boolean; message: string }[] = [];
   for (let i = 0; i < players.length; i++) {
     const p = players[i];
     try {
       const campId = p.campId.includes(":") ? p.campId.split(":")[0] : p.campId;
-      await lookupPlayerByCampId(campId, { forceRefresh: true });
+      await lookupPlayerByCampId(campId, {
+        forceRefresh: true,
+        ignoreCooldown: opts?.ignoreCooldown,
+      });
       results.push({ nickname: p.gameNickname, ok: true, message: "ok" });
     } catch (e) {
       results.push({

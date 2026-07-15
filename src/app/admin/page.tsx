@@ -29,6 +29,12 @@ type CampAuthStatus = {
   expires?: string;
 };
 
+type SyncSummary = {
+  synced: number;
+  ok: number;
+  failed: number;
+};
+
 const emptyForm = {
   gameNickname: "",
   area: "wechat",
@@ -57,6 +63,9 @@ export default function AdminPage() {
   const [qrTaskId, setQrTaskId] = useState<string | null>(null);
   const [qrcodeBase64, setQrcodeBase64] = useState<string | null>(null);
   const [qrStatus, setQrStatus] = useState("");
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
+  const [syncMessage, setSyncMessage] = useState("");
 
   const load = useCallback(async (query = q) => {
     setLoading(true);
@@ -205,6 +214,35 @@ export default function AdminPage() {
     }
   }
 
+  async function syncAll() {
+    if (!confirm("确认刷新所有玩家数据？玩家之间会间隔 5 秒，账号较多时会等待较久。")) {
+      return;
+    }
+    setSyncingAll(true);
+    setSyncSummary(null);
+    setSyncMessage("正在刷新所有玩家，请不要重复点击…");
+    setError("");
+    try {
+      const res = await fetch(withBasePath("/api/admin/sync-all"), { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) {
+        setSyncMessage(json.error || "刷新失败");
+        return;
+      }
+      setSyncSummary({
+        synced: json.data.synced ?? 0,
+        ok: json.data.ok ?? 0,
+        failed: json.data.failed ?? 0,
+      });
+      setSyncMessage("刷新完成");
+      await load();
+    } catch {
+      setSyncMessage("网络错误");
+    } finally {
+      setSyncingAll(false);
+    }
+  }
+
   async function logout() {
     await fetch(withBasePath("/api/admin/auth"), { method: "DELETE" });
     router.replace("/admin/login");
@@ -298,6 +336,14 @@ export default function AdminPage() {
                 清除登录态
               </button>
             )}
+            <button
+              className="btn btn-ghost !py-2"
+              onClick={syncAll}
+              disabled={syncingAll || !campAuth?.loggedIn}
+              title={!campAuth?.loggedIn ? "请先登录营地" : undefined}
+            >
+              {syncingAll ? "刷新中…" : "刷新所有玩家"}
+            </button>
           </div>
         </div>
 
@@ -327,6 +373,14 @@ export default function AdminPage() {
         )}
         {!qrcodeBase64 && qrStatus && (
           <p className="text-sm text-[var(--muted)]">{qrStatus}</p>
+        )}
+        {syncMessage && (
+          <p className="text-sm text-[var(--muted)]">
+            {syncMessage}
+            {syncSummary
+              ? `：成功 ${syncSummary.ok} / ${syncSummary.synced}，失败 ${syncSummary.failed}`
+              : ""}
+          </p>
         )}
       </div>
 
