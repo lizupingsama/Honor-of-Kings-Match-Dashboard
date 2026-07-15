@@ -1,4 +1,4 @@
-import { autoSyncStalePlayers } from "@/lib/player-service";
+import { autoSyncStalePlayers, getAutoSyncBatchSize } from "@/lib/player-service";
 import { jsonOk, jsonError } from "@/lib/api";
 
 export async function POST(req: Request) {
@@ -10,7 +10,14 @@ export async function POST(req: Request) {
     }
   }
 
-  const results = await autoSyncStalePlayers(30);
+  const { searchParams } = new URL(req.url);
+  const limitParam = Number(searchParams.get("limit") || "");
+  const limit =
+    Number.isFinite(limitParam) && limitParam > 0
+      ? Math.min(50, limitParam)
+      : getAutoSyncBatchSize();
+
+  const results = await autoSyncStalePlayers(limit);
   return jsonOk({
     synced: results.length,
     ok: results.filter((r) => r.ok).length,

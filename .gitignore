@@ -51,3 +51,6 @@ next-env.d.ts
 
 # 抓包产物（含 token，勿提交）
 /scripts/captures/
+
+# 营地登录态（含 token，勿提交）
+/data/

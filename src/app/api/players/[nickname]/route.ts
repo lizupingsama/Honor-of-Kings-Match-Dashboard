@@ -20,6 +20,7 @@ export async function GET(
       range: searchParams.get("range") || "30",
       mode: searchParams.get("mode") || "all",
       result: searchParams.get("result") || "all",
+      side: searchParams.get("side") || "all",
       hero: searchParams.get("hero") || "",
       page: Number(searchParams.get("page") || "1"),
     });
@@ -33,6 +34,7 @@ export async function GET(
         range: searchParams.get("range") || "30",
         mode: searchParams.get("mode") || "all",
         result: searchParams.get("result") || "all",
+        side: searchParams.get("side") || "all",
         hero: searchParams.get("hero") || "",
         page: Number(searchParams.get("page") || "1"),
       });

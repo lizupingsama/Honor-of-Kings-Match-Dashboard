@@ -4,10 +4,23 @@ import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { formatRankLabel } from "@/lib/rank";
 import { ScoreTrendChart, type TrendPoint } from "@/components/score-trend-chart";
+import { RankChart } from "@/components/rank-chart";
 import { withBasePath } from "@/lib/base-path";
 
-type BoardType = "score" | "rank" | "peak" | "power" | "winrate" | "hero" | "active";
+type BoardType =
+  | "score"
+  | "rank"
+  | "peak"
+  | "power"
+  | "winrate"
+  | "avgscore"
+  | "kda"
+  | "hero"
+  | "active";
 type ScoreMode = "ranked" | "peak";
+type HeroSortBy = "composite" | "winRate" | "games" | "avgKda" | "avgScore";
+type WinRateSortBy = "winRate" | "wins";
+type KdaSortBy = "kda" | "kills" | "deaths" | "assists";
 type ChartMetric = "rankScore" | "peakRating" | "peakScore" | "combatPower" | "tierScore" | "winRate";
 
 type Row = {
@@ -23,22 +36,44 @@ type Row = {
   heroName?: string;
   winRate?: number;
   seasonGames?: number;
+  seasonWins?: number;
   games?: number;
   avgKda?: number;
+  avgKills?: number;
+  avgDeaths?: number;
+  avgAssists?: number;
+  composite?: number;
   area?: string;
 };
 
 export default function LeaderboardPage() {
-  const [type, setType] = useState<BoardType>("score");
+  const [type, setType] = useState<BoardType>("rank");
   const [scoreMode, setScoreMode] = useState<ScoreMode>("ranked");
+  const [heroSortBy, setHeroSortBy] = useState<HeroSortBy>("composite");
+  const [winRateSortBy, setWinRateSortBy] = useState<WinRateSortBy>("winRate");
+  const [kdaSortBy, setKdaSortBy] = useState<KdaSortBy>("kda");
+  const [showExtraBoards, setShowExtraBoards] = useState(false);
   const [area, setArea] = useState("all");
   const [hero, setHero] = useState("李白");
   const [heroes, setHeroes] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
-  const [minGames, setMinGames] = useState(20);
+  const [minGames, setMinGames] = useState(10); // 胜率榜门槛
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [seriesMap, setSeriesMap] = useState<Record<string, TrendPoint[]>>({});
+  const [rankSeriesMap, setRankSeriesMap] = useState<
+    Record<
+      string,
+      Array<{
+        t: string;
+        score: number | null;
+        label?: string | null;
+        stars?: number | null;
+        result?: string;
+        hero?: string;
+      }>
+    >
+  >({});
   const [seriesLoading, setSeriesLoading] = useState<string | null>(null);
 
   useEffect(() => {
@@ -63,18 +98,26 @@ export default function LeaderboardPage() {
     const qs = new URLSearchParams({ type, area, limit: "50" });
     if (type === "score") qs.set("scoreMode", scoreMode);
     if (type === "hero" || type === "power") qs.set("hero", hero);
+    if (type === "hero") qs.set("sortBy", heroSortBy);
+    if (type === "winrate") qs.set("sortBy", winRateSortBy);
+    if (type === "kda") qs.set("sortBy", kdaSortBy);
     fetch(withBasePath(`/api/leaderboard?${qs}`))
       .then((r) => r.json())
       .then((json) => {
         if (json.ok) {
           setRows(json.data.rows || []);
-          if (json.data.minGames) setMinGames(json.data.minGames);
+          if (
+            (type === "winrate" || type === "avgscore" || type === "kda") &&
+            json.data.minGames
+          ) {
+            setMinGames(json.data.minGames);
+          }
         } else {
           setRows([]);
         }
       })
       .finally(() => setLoading(false));
-  }, [type, scoreMode, area, hero]);
+  }, [type, scoreMode, area, hero, heroSortBy, winRateSortBy, kdaSortBy]);
 
   function activeMetric(): ChartMetric | null {
     if (type === "score") return scoreMode === "ranked" ? "rankScore" : "peakRating";
@@ -113,7 +156,11 @@ export default function LeaderboardPage() {
     setExpanded(nickname);
 
     const cacheKey = cacheKeyFor(nickname, metric);
-    if (seriesMap[cacheKey]) return;
+    if (metric === "tierScore") {
+      if (rankSeriesMap[cacheKey]) return;
+    } else if (seriesMap[cacheKey]) {
+      return;
+    }
 
     setSeriesLoading(cacheKey);
     try {
@@ -125,7 +172,32 @@ export default function LeaderboardPage() {
       if (metric === "combatPower") qs.set("hero", hero);
       const json = await fetch(withBasePath(`/api/leaderboard?${qs}`)).then((r) => r.json());
       if (json.ok) {
-        setSeriesMap((prev) => ({ ...prev, [cacheKey]: json.data.series || [] }));
+        const series = json.data.series || [];
+        if (metric === "tierScore") {
+          setRankSeriesMap((prev) => ({
+            ...prev,
+            [cacheKey]: series.map(
+              (p: {
+                t: string;
+                value?: number;
+                score?: number;
+                label?: string | null;
+                stars?: number | null;
+                result?: string;
+                hero?: string;
+              }) => ({
+                t: p.t,
+                score: p.score ?? p.value ?? null,
+                label: p.label,
+                stars: p.stars,
+                result: p.result,
+                hero: p.hero,
+              }),
+            ),
+          }));
+        } else {
+          setSeriesMap((prev) => ({ ...prev, [cacheKey]: series }));
+        }
       }
     } finally {
       setSeriesLoading(null);
@@ -145,19 +217,19 @@ export default function LeaderboardPage() {
       <div>
         <h1 className="text-2xl font-semibold text-[var(--gold-bright)]">站内排行榜</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          评分（模式评分）、排位（段位星数）、巅峰（巅峰分数）相互独立。胜率榜需至少{" "}
-          {minGames} 场。
+          排位（段位星数）、巅峰（巅峰分数）相互独立。胜率榜 / 均分榜 / KDA
+          榜需至少 {minGames} 场；英雄榜按本地已同步对局统计，满 1 场即可上榜。
         </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
         {(
           [
-            ["score", "评分"],
             ["rank", "排位"],
             ["peak", "巅峰"],
-            ["power", "英雄战力"],
             ["winrate", "胜率榜"],
+            ["avgscore", "均分榜"],
+            ["kda", "KDA榜"],
             ["hero", "英雄榜"],
             ["active", "活跃榜"],
           ] as const
@@ -170,6 +242,43 @@ export default function LeaderboardPage() {
             {label}
           </button>
         ))}
+        <button
+          type="button"
+          className={`btn ${
+            showExtraBoards || type === "score" || type === "power"
+              ? "btn-primary"
+              : "btn-ghost"
+          } !py-2`}
+          onClick={() => {
+            setShowExtraBoards((v) => {
+              const next = !v;
+              if (!next && (type === "score" || type === "power")) {
+                setType("rank");
+              }
+              return next;
+            });
+          }}
+          aria-expanded={showExtraBoards || type === "score" || type === "power"}
+        >
+          {showExtraBoards || type === "score" || type === "power"
+            ? "收起更多"
+            : "更多"}
+        </button>
+        {(showExtraBoards || type === "score" || type === "power") &&
+          (
+            [
+              ["score", "评分"],
+              ["power", "英雄战力"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              className={`btn ${type === key ? "btn-primary" : "btn-ghost"} !py-2`}
+              onClick={() => setType(key)}
+            >
+              {label}
+            </button>
+          ))}
         <select
           className="input !w-auto"
           value={area}
@@ -192,7 +301,52 @@ export default function LeaderboardPage() {
             ))}
           </select>
         )}
+        {type === "hero" && (
+          <select
+            className="input !w-auto"
+            value={heroSortBy}
+            onChange={(e) => setHeroSortBy(e.target.value as HeroSortBy)}
+            title="英雄榜排序"
+          >
+            <option value="composite">综合</option>
+            <option value="winRate">胜率</option>
+            <option value="games">场次</option>
+            <option value="avgKda">KDA</option>
+            <option value="avgScore">评分</option>
+          </select>
+        )}
+        {type === "winrate" && (
+          <select
+            className="input !w-auto"
+            value={winRateSortBy}
+            onChange={(e) => setWinRateSortBy(e.target.value as WinRateSortBy)}
+            title="胜率榜排序"
+          >
+            <option value="winRate">胜率</option>
+            <option value="wins">胜场</option>
+          </select>
+        )}
+        {type === "kda" && (
+          <select
+            className="input !w-auto"
+            value={kdaSortBy}
+            onChange={(e) => setKdaSortBy(e.target.value as KdaSortBy)}
+            title="KDA榜排序"
+          >
+            <option value="kda">KDA</option>
+            <option value="kills">击杀</option>
+            <option value="deaths">死亡</option>
+            <option value="assists">助攻</option>
+          </select>
+        )}
       </div>
+
+      {type === "hero" && (
+        <p className="text-xs text-[var(--muted)]">
+          综合分 =（胜率×45% + KDA折算×30% + 评分折算×25%）× 场次可信度；KDA 按 10
+          封顶、评分按 12 封顶折算，场次越多可信度越高（10 场封顶）。
+        </p>
+      )}
 
       {type === "score" && (
         <div className="flex flex-wrap items-center gap-2">
@@ -241,12 +395,7 @@ export default function LeaderboardPage() {
                 <th>王者名称</th>
                 <th>区服</th>
                 {type === "score" && <th>评分</th>}
-                {type === "rank" && (
-                  <>
-                    <th>段位星数</th>
-                    <th>当前排位评分</th>
-                  </>
-                )}
+                {type === "rank" && <th>段位星数</th>}
                 {type === "peak" && <th>巅峰分数</th>}
                 {type === "power" && (
                   <>
@@ -260,10 +409,31 @@ export default function LeaderboardPage() {
                     <th>场次</th>
                     <th>KDA</th>
                     <th>评分</th>
+                    <th>综合</th>
                   </>
                 )}
-                {type === "winrate" && <th>场次</th>}
-                {type === "active" && <th>近 7 日场次</th>}
+                {type === "winrate" && (
+                  <>
+                    <th>胜场</th>
+                    <th>场次</th>
+                  </>
+                )}
+                {type === "avgscore" && (
+                  <>
+                    <th>平均评分</th>
+                    <th>近期场次</th>
+                  </>
+                )}
+                {type === "kda" && (
+                  <>
+                    <th>KDA</th>
+                    <th>场均击杀</th>
+                    <th>场均死亡</th>
+                    <th>场均助攻</th>
+                    <th>近期场次</th>
+                  </>
+                )}
+                {type === "active" && <th>赛季场次(排位)</th>}
                 {expandable && <th className="w-16"></th>}
               </tr>
             </thead>
@@ -301,12 +471,7 @@ export default function LeaderboardPage() {
                         <td className="font-medium text-[var(--gold-bright)]">{scoreValue}</td>
                       )}
                       {type === "rank" && (
-                        <>
-                          <td>{formatRankLabel(row.currentRank, row.currentStars ?? 0)}</td>
-                          <td className="font-medium text-[var(--gold-bright)]">
-                            {row.rankScore ?? 0}
-                          </td>
-                        </>
+                        <td>{formatRankLabel(row.currentRank, row.currentStars ?? 0)}</td>
                       )}
                       {type === "peak" && (
                         <td className="font-medium text-[var(--gold-bright)]">
@@ -327,9 +492,36 @@ export default function LeaderboardPage() {
                           <td>{row.games}</td>
                           <td>{row.avgKda}</td>
                           <td>{row.avgScore}</td>
+                          <td className="font-medium text-[var(--gold-bright)]">
+                            {row.composite ?? 0}
+                          </td>
                         </>
                       )}
-                      {type === "winrate" && <td>{row.seasonGames}</td>}
+                      {type === "winrate" && (
+                        <>
+                          <td>{row.seasonWins ?? 0}</td>
+                          <td>{row.seasonGames}</td>
+                        </>
+                      )}
+                      {type === "avgscore" && (
+                        <>
+                          <td className="font-medium text-[var(--gold-bright)]">
+                            {row.avgScore ?? 0}
+                          </td>
+                          <td>{row.games ?? 0}</td>
+                        </>
+                      )}
+                      {type === "kda" && (
+                        <>
+                          <td className="font-medium text-[var(--gold-bright)]">
+                            {row.avgKda ?? 0}
+                          </td>
+                          <td>{row.avgKills ?? 0}</td>
+                          <td>{row.avgDeaths ?? 0}</td>
+                          <td>{row.avgAssists ?? 0}</td>
+                          <td>{row.games ?? 0}</td>
+                        </>
+                      )}
                       {type === "active" && <td>{row.games}</td>}
                       {expandable && (
                         <td className="text-[var(--muted)]">{isOpen ? "收起" : "曲线"}</td>
@@ -346,11 +538,13 @@ export default function LeaderboardPage() {
                               <div className="py-10 text-center text-sm text-[var(--muted)]">
                                 加载曲线…
                               </div>
+                            ) : type === "rank" ? (
+                              <RankChart data={rankSeriesMap[cacheKey] || []} />
                             ) : (
                               <ScoreTrendChart
                                 data={seriesMap[cacheKey] || []}
                                 metric={metric === "tierScore" ? "rankScore" : metric}
-                                yAsRankLabel={type === "rank"}
+                                yAsRankLabel={false}
                                 yDomain={
                                   type === "score"
                                     ? [0, 110]

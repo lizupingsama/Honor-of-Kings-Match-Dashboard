@@ -21,6 +21,14 @@ type PlayerRow = {
   _count: { matches: number; scoreHistories: number; heroStats: number };
 };
 
+type CampAuthStatus = {
+  loggedIn: boolean;
+  userId?: string;
+  nickname?: string;
+  lastLoginAt?: string;
+  expires?: string;
+};
+
 const emptyForm = {
   gameNickname: "",
   area: "wechat",
@@ -43,6 +51,12 @@ export default function AdminPage() {
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+
+  const [campAuth, setCampAuth] = useState<CampAuthStatus | null>(null);
+  const [campLoading, setCampLoading] = useState(false);
+  const [qrTaskId, setQrTaskId] = useState<string | null>(null);
+  const [qrcodeBase64, setQrcodeBase64] = useState<string | null>(null);
+  const [qrStatus, setQrStatus] = useState("");
 
   const load = useCallback(async (query = q) => {
     setLoading(true);
@@ -68,6 +82,20 @@ export default function AdminPage() {
     }
   }, [q, router]);
 
+  const loadCampAuth = useCallback(async () => {
+    try {
+      const res = await fetch(withBasePath("/api/admin/camp-auth"));
+      const json = await res.json();
+      if (res.status === 401) {
+        router.replace("/admin/login");
+        return;
+      }
+      if (json.ok) setCampAuth(json.data);
+    } catch {
+      // ignore
+    }
+  }, [router]);
+
   useEffect(() => {
     fetch(withBasePath("/api/admin/auth"))
       .then((r) => r.json())
@@ -82,8 +110,100 @@ export default function AdminPage() {
   }, [router]);
 
   useEffect(() => {
-    if (ready) load("");
+    if (ready) {
+      load("");
+      loadCampAuth();
+    }
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!qrTaskId) return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(
+          withBasePath(`/api/admin/camp-auth/qr?taskId=${encodeURIComponent(qrTaskId)}`),
+        );
+        const json = await res.json();
+        if (cancelled || !json.ok) return;
+        const status = json.data.status as string;
+        if (status === "waiting") {
+          setQrStatus("等待扫码…");
+        } else if (status === "scanned") {
+          setQrStatus("已扫码，请在手机上确认登录");
+        } else if (status === "success") {
+          setQrStatus("登录成功");
+          setCampAuth(json.data.auth);
+          setQrTaskId(null);
+          setQrcodeBase64(null);
+          setCampLoading(false);
+        } else if (status === "expired") {
+          setQrStatus("二维码已过期，请重新获取");
+          setQrTaskId(null);
+          setQrcodeBase64(null);
+          setCampLoading(false);
+        } else if (status === "canceled") {
+          setQrStatus("已取消登录");
+          setQrTaskId(null);
+          setQrcodeBase64(null);
+          setCampLoading(false);
+        } else if (status === "error") {
+          setQrStatus(json.data.message || "登录失败");
+          setCampLoading(false);
+        }
+      } catch {
+        // ignore transient errors
+      }
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [qrTaskId]);
+
+  async function startCampLogin() {
+    setCampLoading(true);
+    setQrStatus("正在获取二维码…");
+    setError("");
+    try {
+      const res = await fetch(withBasePath("/api/admin/camp-auth/qr"), { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) {
+        setError(json.error || "获取二维码失败");
+        setQrStatus("");
+        setCampLoading(false);
+        return;
+      }
+      setQrTaskId(json.data.taskId);
+      setQrcodeBase64(json.data.qrcodeBase64);
+      setQrStatus("请使用微信扫描二维码登录王者营地");
+    } catch {
+      setError("网络错误");
+      setQrStatus("");
+      setCampLoading(false);
+    }
+  }
+
+  async function clearCampLogin() {
+    if (!confirm("确认清除营地登录态？清除后将无法同步战绩，需重新扫码。")) return;
+    setCampLoading(true);
+    try {
+      const res = await fetch(withBasePath("/api/admin/camp-auth"), { method: "DELETE" });
+      const json = await res.json();
+      if (!json.ok) {
+        setError(json.error || "清除失败");
+        return;
+      }
+      setCampAuth({ loggedIn: false });
+      setQrTaskId(null);
+      setQrcodeBase64(null);
+      setQrStatus("");
+    } catch {
+      setError("网络错误");
+    } finally {
+      setCampLoading(false);
+    }
+  }
 
   async function logout() {
     await fetch(withBasePath("/api/admin/auth"), { method: "DELETE" });
@@ -151,6 +271,63 @@ export default function AdminPage() {
             退出
           </button>
         </div>
+      </div>
+
+      <div className="panel space-y-3 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-medium text-[var(--gold-bright)]">营地登录</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              战绩同步依赖王者营地登录态。请用微信扫码登录后，首页即可用营地 ID 查询。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="btn btn-primary !py-2"
+              onClick={startCampLogin}
+              disabled={campLoading}
+            >
+              {campAuth?.loggedIn ? "重新扫码" : "微信扫码登录"}
+            </button>
+            {campAuth?.loggedIn && (
+              <button
+                className="btn btn-ghost !py-2"
+                onClick={clearCampLogin}
+                disabled={campLoading}
+              >
+                清除登录态
+              </button>
+            )}
+          </div>
+        </div>
+
+        {campAuth?.loggedIn ? (
+          <p className="text-sm text-[var(--muted)]">
+            已登录
+            {campAuth.nickname ? ` · ${campAuth.nickname}` : ""}
+            {campAuth.userId ? ` · ID ${campAuth.userId}` : ""}
+            {campAuth.lastLoginAt
+              ? ` · ${format(new Date(campAuth.lastLoginAt), "yyyy-MM-dd HH:mm")}`
+              : ""}
+          </p>
+        ) : (
+          <p className="text-sm text-[var(--crimson)]">未登录营地，查询战绩前请先扫码。</p>
+        )}
+
+        {qrcodeBase64 && (
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`data:image/png;base64,${qrcodeBase64}`}
+              alt="营地登录二维码"
+              className="h-44 w-44 rounded-lg border border-[var(--line)] bg-white p-2"
+            />
+            <p className="text-sm text-[var(--muted)]">{qrStatus}</p>
+          </div>
+        )}
+        {!qrcodeBase64 && qrStatus && (
+          <p className="text-sm text-[var(--muted)]">{qrStatus}</p>
+        )}
       </div>
 
       {showCreate && (

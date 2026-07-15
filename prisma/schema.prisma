@@ -43,12 +43,28 @@ model Player {
   syncJobs          SyncJob[]
   scoreHistories    ScoreHistory[]
   heroPowerHistories HeroPowerHistory[]
+  likes             PlayerLike[]
 
   @@index([tierScore])
   @@index([rankScore])
   @@index([peakRating])
   @@index([peakScore])
   @@index([lastSyncAt])
+}
+
+/// 玩家点赞：同一浏览器（clientKey）对同一玩家每天最多一次
+model PlayerLike {
+  id        String   @id @default(cuid())
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  /// 浏览器本地生成的匿名 ID
+  clientKey String
+  /// 东八区日期 YYYY-MM-DD
+  dayKey    String
+  createdAt DateTime @default(now())
+
+  @@unique([playerId, clientKey, dayKey])
+  @@index([playerId])
 }
 
 /// 评分 / 巅峰分 / 胜率快照：以数据录入时间为轴
@@ -115,9 +131,22 @@ model Match {
   rankName    String?
   stars       Int?
   rankScore   Int?
+  /// 巅峰赛积分（对局后）
+  peakScore   Int?
+  /// 本场巅峰分变化（new - old）
+  peakDelta   Int?
+  /// 本场排位星数变化（相对上一场排位的 rankScore 差）
   rankDelta   Int?
   mvp         Boolean  @default(false)
   gold        Boolean  @default(false)
+  /// 奖牌文案，如 银牌打野 / 金牌中路
+  medal       String?
+  /// 官方奖牌图标 URL（evaluateUrlV3）
+  medalIcon   String?
+  /// mvp | svp
+  mvpType     String?
+  /// 阵营：blue | red（来自营地 AcntCamp）
+  side        String?
   economy     Int?
   damage      Int?
   rawJson     String?
@@ -127,6 +156,7 @@ model Match {
   @@unique([playerId, externalId])
   @@index([playerId, playedAt])
   @@index([heroName])
+  @@index([side])
 }
 
 model HeroStat {

@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-
 export type HeroRow = {
   heroName: string;
   heroIcon?: string | null;
@@ -14,10 +12,10 @@ export type HeroRow = {
 
 export function HeroGrid({
   heroes,
-  basePath,
+  onSelect,
 }: {
   heroes: HeroRow[];
-  basePath?: string;
+  onSelect?: (heroName: string) => void;
 }) {
   if (!heroes.length) {
     return (
@@ -31,8 +29,18 @@ export function HeroGrid({
         const inner = (
           <>
             <div className="flex items-center justify-between gap-2">
-              <div className="font-semibold">{h.heroName}</div>
-              <span className="chip">{h.games} 场</span>
+              <div className="flex min-w-0 items-center gap-2 font-semibold">
+                {h.heroIcon ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={h.heroIcon}
+                    alt=""
+                    className="h-7 w-7 shrink-0 rounded-full object-cover"
+                  />
+                ) : null}
+                <span className="truncate">{h.heroName}</span>
+              </div>
+              <span className="chip shrink-0">{h.games} 场</span>
             </div>
             <div className="mt-3 flex justify-between text-sm text-[var(--muted)]">
               <span>胜率 {h.winRate}%</span>
@@ -48,14 +56,15 @@ export function HeroGrid({
           </>
         );
 
-        return basePath ? (
-          <Link
+        return onSelect ? (
+          <button
             key={h.heroName}
-            href={`${basePath}?hero=${encodeURIComponent(h.heroName)}`}
-            className="panel block p-4 transition hover:border-[rgba(212,175,106,0.4)]"
+            type="button"
+            onClick={() => onSelect(h.heroName)}
+            className="panel block w-full p-4 text-left transition hover:border-[rgba(212,175,106,0.4)]"
           >
             {inner}
-          </Link>
+          </button>
         ) : (
           <div key={h.heroName} className="panel p-4">
             {inner}

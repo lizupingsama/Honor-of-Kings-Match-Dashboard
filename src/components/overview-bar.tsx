@@ -1,11 +1,19 @@
 import { formatRankLabel } from "@/lib/rank";
 
+function areaLabel(area?: string) {
+  if (area === "qq") return "QQ 区";
+  if (area === "wechat") return "微信区";
+  return area || "—";
+}
+
 export function OverviewBar({
   data,
 }: {
   data: {
     currentRank?: string | null;
     currentStars?: number;
+    rankScore?: number;
+    peakScore?: number;
     seasonGames?: number;
     seasonWins?: number;
     winRate?: number;
@@ -23,7 +31,15 @@ export function OverviewBar({
       value: formatRankLabel(data.currentRank, data.currentStars ?? 0),
     },
     {
-      label: "场次",
+      label: "排位评分",
+      value: data.rankScore != null && data.rankScore > 0 ? String(data.rankScore) : "—",
+    },
+    {
+      label: "巅峰分",
+      value: data.peakScore && data.peakScore > 0 ? String(data.peakScore) : "—",
+    },
+    {
+      label: "赛季场次",
       value: String(data.seasonGames ?? 0),
     },
     {
@@ -38,10 +54,14 @@ export function OverviewBar({
       label: "金牌",
       value: String(data.goldCount ?? 0),
     },
+    {
+      label: "区服",
+      value: areaLabel(data.area),
+    },
   ];
 
   return (
-    <div className="panel fade-in grid gap-4 p-5 sm:grid-cols-5">
+    <div className="panel fade-in grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
       {items.map((item) => (
         <div key={item.label}>
           <div className="text-xs text-[var(--muted)]">{item.label}</div>

@@ -4,9 +4,17 @@ import { parseRankScore } from "./rank";
 import { recordScoreSnapshot } from "./score-history";
 
 const COOLDOWN = Number(process.env.SYNC_COOLDOWN_SECONDS || "300") || 300;
+const AUTO_SYNC_BATCH_SIZE = Math.max(
+  1,
+  Number(process.env.AUTO_SYNC_BATCH_SIZE || "10") || 10,
+);
 
 export function getCooldownSeconds() {
   return COOLDOWN;
+}
+
+export function getAutoSyncBatchSize() {
+  return AUTO_SYNC_BATCH_SIZE;
 }
 
 export class PlayerServiceError extends Error {
@@ -152,9 +160,17 @@ async function persistFetchResult(
   });
 
   let pulled = 0;
+  let latestPeakScore: number | null = null;
+  let latestPeakAt = 0;
+
   for (const m of result.matches) {
     const mRankScore =
       m.rankName != null ? parseRankScore(m.rankName, m.stars ?? 0) : null;
+
+    if (m.peakScore != null && m.peakScore > 0 && m.playedAt.getTime() >= latestPeakAt) {
+      latestPeakScore = m.peakScore;
+      latestPeakAt = m.playedAt.getTime();
+    }
 
     await prisma.match.upsert({
       where: {
@@ -182,47 +198,95 @@ async function persistFetchResult(
         rankName: m.rankName,
         stars: m.stars,
         rankScore: mRankScore ?? undefined,
+        peakScore: m.peakScore,
+        peakDelta: m.peakDelta,
         mvp: m.mvp ?? false,
         gold: m.gold ?? false,
+        medal: m.medal,
+        medalIcon: m.medalIcon,
+        mvpType: m.mvpType,
+        side: m.side,
         economy: m.economy,
         damage: m.damage,
         rawJson: m.rawJson,
       },
       update: {
+        playedAt: m.playedAt,
+        mode: m.mode,
+        modeName: m.modeName,
+        heroId: m.heroId,
+        heroName: m.heroName,
+        heroIcon: m.heroIcon,
         result: m.result,
         kills: m.kills,
         deaths: m.deaths,
         assists: m.assists,
         score: m.score,
         evaluate: m.evaluate,
+        durationSec: m.durationSec,
         rankName: m.rankName,
         stars: m.stars,
         rankScore: mRankScore ?? undefined,
+        peakScore: m.peakScore,
+        peakDelta: m.peakDelta,
         mvp: m.mvp ?? false,
         gold: m.gold ?? false,
+        medal: m.medal,
+        medalIcon: m.medalIcon,
+        mvpType: m.mvpType,
+        side: m.side,
         economy: m.economy,
         damage: m.damage,
+        rawJson: m.rawJson,
       },
     });
     pulled++;
   }
 
+  if (latestPeakScore != null) {
+    await prisma.player.update({
+      where: { id: playerId },
+      data: { peakScore: latestPeakScore },
+    });
+  }
+
+  await recomputeRankDeltas(playerId);
   await recomputeHeroStats(playerId);
   return pulled;
 }
 
-/** 按王者名称查询并同步战绩到本地 */
-export async function lookupPlayerByNickname(
-  nicknameRaw: string,
+/** 按相邻排位场次的 rankScore 差写入 rankDelta（约等于星数变化） */
+async function recomputeRankDeltas(playerId: string) {
+  const ranked = await prisma.match.findMany({
+    where: { playerId, mode: "ranked", rankScore: { not: null } },
+    orderBy: { playedAt: "asc" },
+    select: { id: true, rankScore: true },
+  });
+
+  for (let i = 0; i < ranked.length; i++) {
+    const delta =
+      i === 0 ? null : (ranked[i].rankScore as number) - (ranked[i - 1].rankScore as number);
+    await prisma.match.update({
+      where: { id: ranked[i].id },
+      data: { rankDelta: delta },
+    });
+  }
+}
+
+/** 按营地 ID 查询并同步战绩到本地 */
+export async function lookupPlayerByCampId(
+  campIdRaw: string,
   opts?: { forceRefresh?: boolean },
 ) {
-  const nickname = nicknameRaw.trim();
-  if (!nickname) throw new PlayerServiceError("请输入王者名称", 400);
+  const campId = campIdRaw.trim();
+  if (!/^\d{5,15}$/.test(campId)) {
+    throw new PlayerServiceError("营地 ID 应为 5–15 位数字", 400);
+  }
 
   const client = getWzryApiClient();
   let hits;
   try {
-    hits = await client.searchByNickname(nickname);
+    hits = await client.searchByNickname(campId);
   } catch (err) {
     if (err instanceof WzryApiError) {
       const status =
@@ -240,20 +304,12 @@ export async function lookupPlayerByNickname(
 
   if (!hits.length) throw new PlayerServiceError("未找到该玩家", 404);
 
-  // 精确优先：游戏名 / 营地昵称，否则取第一条
-  const hit =
-    hits.find((h) => h.gameNickname === nickname) ||
-    hits.find((h) => h.campNickname === nickname) ||
-    hits.find((h) => h.gameNickname.toLowerCase() === nickname.toLowerCase()) ||
-    hits.find((h) => h.campNickname?.toLowerCase() === nickname.toLowerCase()) ||
-    hits[0];
-
+  const hit = hits[0];
   const displayName = hit.gameNickname;
 
-  let player = await prisma.player.findUnique({ where: { gameNickname: displayName } });
+  let player = await prisma.player.findUnique({ where: { campId: hit.campId } });
   if (!player) {
-    // campId 冲突时按 campId 找回
-    player = await prisma.player.findUnique({ where: { campId: hit.campId } });
+    player = await prisma.player.findUnique({ where: { gameNickname: displayName } });
   }
 
   const needRefresh =
@@ -272,21 +328,17 @@ export async function lookupPlayerByNickname(
         tierScore: parseRankScore(hit.currentRank, hit.currentStars ?? 0),
       },
     });
-  } else if (player.gameNickname !== displayName) {
-    player = await prisma.player.update({
-      where: { id: player.id },
-      data: { gameNickname: displayName },
-    });
+  } else {
+    const patch: { gameNickname?: string; campId?: string; area?: string } = {};
+    if (player.gameNickname !== displayName) patch.gameNickname = displayName;
+    if (player.campId !== hit.campId) patch.campId = hit.campId;
+    if (hit.area && player.area !== hit.area) patch.area = hit.area;
+    if (Object.keys(patch).length) {
+      player = await prisma.player.update({ where: { id: player.id }, data: patch });
+    }
   }
 
   if (needRefresh) {
-    if (player.lastSyncAt && !opts?.forceRefresh) {
-      const elapsed = (Date.now() - player.lastSyncAt.getTime()) / 1000;
-      // already handled by needRefresh
-      void elapsed;
-    }
-
-    // 强制刷新时检查冷却
     if (opts?.forceRefresh && player.lastSyncAt) {
       const elapsed = (Date.now() - player.lastSyncAt.getTime()) / 1000;
       if (elapsed < COOLDOWN) {
@@ -304,7 +356,6 @@ export async function lookupPlayerByNickname(
         num: 60,
         nickname: displayName,
       });
-      // 保证展示名为用户查询的王者名
       result.profile.gameNickname = displayName;
       const pulled = await persistFetchResult(player.id, displayName, result);
       await prisma.syncJob.update({
@@ -334,7 +385,7 @@ export async function lookupPlayerByNickname(
       if (err instanceof WzryApiError) {
         throw new PlayerServiceError(
           message,
-          err.code === "rate_limit" ? 429 : 400,
+          err.code === "rate_limit" ? 429 : err.code === "config" ? 503 : 400,
         );
       }
       throw new PlayerServiceError(message, 502);
@@ -349,12 +400,33 @@ export async function lookupPlayerByNickname(
   return getPlayerDashboard(displayName);
 }
 
+/** @deprecated 保留兼容；新逻辑请用 lookupPlayerByCampId */
+export async function lookupPlayerByNickname(
+  nicknameRaw: string,
+  opts?: { forceRefresh?: boolean },
+) {
+  const nickname = nicknameRaw.trim();
+  if (!nickname) throw new PlayerServiceError("请输入王者名称", 400);
+
+  // 纯数字当作营地 ID
+  if (/^\d{5,15}$/.test(nickname)) {
+    return lookupPlayerByCampId(nickname, opts);
+  }
+
+  const existing = await prisma.player.findUnique({ where: { gameNickname: nickname } });
+  if (!existing) {
+    throw new PlayerServiceError("请使用营地 ID 查询；已入库玩家可从排行榜进入", 400);
+  }
+  return lookupPlayerByCampId(existing.campId.includes(":") ? existing.campId.split(":")[0] : existing.campId, opts);
+}
+
 export async function getPlayerDashboard(
   nickname: string,
   query?: {
     range?: string;
     mode?: string;
     result?: string;
+    side?: string;
     hero?: string;
     page?: number;
   },
@@ -371,6 +443,7 @@ export async function getPlayerDashboard(
   const range = query?.range || "30";
   const mode = query?.mode || "all";
   const result = query?.result || "all";
+  const side = query?.side || "all";
   const hero = query?.hero || "";
   const page = Math.max(1, query?.page || 1);
   const pageSize = 20;
@@ -387,11 +460,19 @@ export async function getPlayerDashboard(
     ...(since ? { playedAt: { gte: since } } : {}),
     ...(mode !== "all" ? { mode } : {}),
     ...(result !== "all" ? { result } : {}),
+    ...(side === "blue" || side === "red" ? { side } : {}),
     ...(hero ? { heroName: hero } : {}),
   };
 
-  const [total, matches, rankMatches] = await Promise.all([
+  const [total, wins, kdaAgg, matches, rankMatches, peakMatches, likeCount] =
+    await Promise.all([
     prisma.match.count({ where }),
+    prisma.match.count({ where: { ...where, result: "win" } }),
+    prisma.match.aggregate({
+      where,
+      _sum: { kills: true, deaths: true, assists: true, score: true },
+      _count: { score: true },
+    }),
     prisma.match.findMany({
       where,
       orderBy: { playedAt: "desc" },
@@ -415,7 +496,37 @@ export async function getPlayerDashboard(
         heroName: true,
       },
     }),
+    prisma.match.findMany({
+      where: {
+        playerId: player.id,
+        mode: "peak",
+        peakScore: { not: null },
+        ...(since ? { playedAt: { gte: since } } : {}),
+      },
+      orderBy: { playedAt: "asc" },
+      select: {
+        playedAt: true,
+        peakScore: true,
+        result: true,
+        heroName: true,
+      },
+    }),
+    prisma.playerLike.count({ where: { playerId: player.id } }),
   ]);
+
+  const sumKills = kdaAgg._sum.kills ?? 0;
+  const sumDeaths = kdaAgg._sum.deaths ?? 0;
+  const sumAssists = kdaAgg._sum.assists ?? 0;
+  const matchAvgKda = total
+    ? sumDeaths === 0
+      ? Math.round((sumKills + sumAssists) * 100) / 100
+      : Math.round(((sumKills + sumAssists) / sumDeaths) * 100) / 100
+    : 0;
+  const scoredGames = kdaAgg._count.score || 0;
+  const matchAvgScore =
+    scoredGames && kdaAgg._sum.score != null
+      ? Math.round((kdaAgg._sum.score / scoredGames) * 10) / 10
+      : 0;
 
   return {
     player: {
@@ -425,6 +536,7 @@ export async function getPlayerDashboard(
       currentRank: player.currentRank,
       currentStars: player.currentStars,
       rankScore: player.rankScore,
+      peakScore: player.peakScore,
       seasonGames: player.seasonGames,
       seasonWins: player.seasonWins,
       winRate: player.seasonGames
@@ -435,9 +547,14 @@ export async function getPlayerDashboard(
       lastSyncAt: player.lastSyncAt,
       lastSyncError: player.lastSyncError,
       queryCount: player.queryCount,
+      likeCount,
     },
     matches,
     total,
+    wins,
+    matchWinRate: total ? Math.round((wins / total) * 1000) / 10 : 0,
+    matchAvgKda,
+    matchAvgScore,
     page,
     pageSize,
     heroStats: player.heroStats.map((h) => ({
@@ -457,24 +574,48 @@ export async function getPlayerDashboard(
       result: m.result,
       hero: m.heroName,
     })),
+    peakSeries: peakMatches.map((m) => ({
+      t: m.playedAt.toISOString(),
+      value: m.peakScore as number,
+      result: m.result,
+      hero: m.heroName,
+    })),
     cooldown: COOLDOWN,
   };
 }
 
-export async function autoSyncStalePlayers(limit = 20) {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+/**
+ * 冷却到期后同步榜上相关玩家（有排位/巅峰分/评分等字段）。
+ * 最久未同步优先，默认每轮 AUTO_SYNC_BATCH_SIZE 条。
+ */
+export async function autoSyncStalePlayers(limit = AUTO_SYNC_BATCH_SIZE) {
+  const batch = Math.max(1, limit);
+  const cutoff = new Date(Date.now() - COOLDOWN * 1000);
   const players = await prisma.player.findMany({
     where: {
-      OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: cutoff } }],
+      AND: [
+        {
+          OR: [
+            { tierScore: { gt: 0 } },
+            { peakScore: { gt: 0 } },
+            { rankScore: { gt: 0 } },
+            { peakRating: { gt: 0 } },
+          ],
+        },
+        {
+          OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: cutoff } }],
+        },
+      ],
     },
-    take: limit,
+    take: batch,
     orderBy: { lastSyncAt: "asc" },
   });
 
   const results: { nickname: string; ok: boolean; message: string }[] = [];
   for (const p of players) {
     try {
-      await lookupPlayerByNickname(p.gameNickname, { forceRefresh: true });
+      const campId = p.campId.includes(":") ? p.campId.split(":")[0] : p.campId;
+      await lookupPlayerByCampId(campId, { forceRefresh: true });
       results.push({ nickname: p.gameNickname, ok: true, message: "ok" });
     } catch (e) {
       results.push({

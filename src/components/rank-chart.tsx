@@ -21,6 +21,15 @@ type Point = {
   hero?: string;
 };
 
+function formatPointRank(p: Point & { score: number }) {
+  if (p.label) {
+    const name = String(p.label).replace(/\s*\d+\s*星\s*$/, "").trim();
+    if (p.stars != null && p.stars >= 0) return `${name} ${p.stars}星`;
+    return name || scoreToApproxLabel(p.score);
+  }
+  return scoreToApproxLabel(p.score);
+}
+
 export function RankChart({ data }: { data: Point[] }) {
   const chartData = data
     .filter((d) => d.score != null)
@@ -38,10 +47,17 @@ export function RankChart({ data }: { data: Point[] }) {
     );
   }
 
+  const scores = chartData.map((d) => d.score);
+  const dataMin = Math.min(...scores);
+  const dataMax = Math.max(...scores);
+  const pad = Math.max(2, Math.ceil((dataMax - dataMin) * 0.2) || 2);
+  const yMin = Math.max(0, dataMin - pad);
+  const yMax = dataMax + pad;
+
   return (
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
           <defs>
             <linearGradient id="rankFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#d4af6a" stopOpacity={0.45} />
@@ -60,7 +76,9 @@ export function RankChart({ data }: { data: Point[] }) {
             tick={{ fill: "#9aa6b8", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
-            width={56}
+            width={72}
+            domain={[yMin, yMax]}
+            allowDecimals={false}
             tickFormatter={(v) => scoreToApproxLabel(Number(v))}
           />
           <Tooltip
@@ -70,10 +88,10 @@ export function RankChart({ data }: { data: Point[] }) {
               borderRadius: 12,
             }}
             labelStyle={{ color: "#f0d78c" }}
-            formatter={(value) => [
-              scoreToApproxLabel(Number(value ?? 0)),
-              "段位",
-            ]}
+            formatter={(_value, _name, item) => {
+              const p = item?.payload as Point & { score: number; time: string };
+              return [p ? formatPointRank(p) : scoreToApproxLabel(Number(_value ?? 0)), "段位"];
+            }}
             labelFormatter={(_, payload) => {
               const p = payload?.[0]?.payload as Point & { time: string };
               if (!p) return "";
@@ -86,8 +104,8 @@ export function RankChart({ data }: { data: Point[] }) {
             stroke="#f0d78c"
             strokeWidth={2}
             fill="url(#rankFill)"
-            dot={false}
-            activeDot={{ r: 4, fill: "#f0d78c" }}
+            dot={{ r: 3, fill: "#f0d78c" }}
+            activeDot={{ r: 5, fill: "#f0d78c" }}
           />
         </AreaChart>
       </ResponsiveContainer>

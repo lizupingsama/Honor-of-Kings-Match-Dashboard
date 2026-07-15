@@ -7,15 +7,19 @@ import { withBasePath } from "@/lib/base-path";
 
 export default function HomePage() {
   const router = useRouter();
-  const [nickname, setNickname] = useState("");
+  const [campId, setCampId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const name = nickname.trim();
-    if (!name) {
-      setError("请输入王者名称");
+    const id = campId.trim();
+    if (!id) {
+      setError("请输入营地 ID");
+      return;
+    }
+    if (!/^\d{5,15}$/.test(id)) {
+      setError("营地 ID 应为 5–15 位数字");
       return;
     }
     setLoading(true);
@@ -24,7 +28,7 @@ export default function HomePage() {
       const res = await fetch(withBasePath("/api/lookup"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname: name }),
+        body: JSON.stringify({ campId: id }),
       });
       const json = await res.json();
       if (!json.ok) {
@@ -57,17 +61,20 @@ export default function HomePage() {
           >
             王者战绩看板
           </p>
-          <p className="mt-4 text-[var(--muted)]">输入玩家的王者名称，查看段位、英雄与近期对局</p>
+          <p className="mt-4 text-[var(--muted)]">
+            输入王者营地 ID，查看段位、英雄与近期对局
+          </p>
 
           <form onSubmit={onSubmit} className="mt-8 space-y-3 text-left">
-            <label className="label">王者名称</label>
+            <label className="label">营地 ID</label>
             <div className="flex flex-col gap-3 sm:flex-row">
               <input
                 className="input flex-1"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                placeholder="例如：峡谷旅人"
-                maxLength={32}
+                value={campId}
+                onChange={(e) => setCampId(e.target.value.replace(/\D/g, "").slice(0, 15))}
+                placeholder="例如：123456789"
+                inputMode="numeric"
+                maxLength={15}
                 autoFocus
               />
               <button className="btn btn-primary sm:min-w-28" disabled={loading}>
@@ -76,10 +83,12 @@ export default function HomePage() {
             </div>
             {error && <p className="text-sm text-[var(--crimson)]">{error}</p>}
             <p className="text-xs text-[var(--muted)]">
-              已对接 ApiZero 战绩接口：输入王者名称即可查询。
-              请在 <code className="text-[var(--gold)]">.env</code> 填写{" "}
-              <code className="text-[var(--gold)]">WZRY_API_KEY</code>
-              （到 apizero.cn/account/keys 复制）。若上游提示登录态失效，稍后再试。
+              打开王者营地 App → 个人主页，即可查看营地 ID（纯数字）。
+              若提示登录态失效，请管理员到{" "}
+              <Link href="/admin" className="text-[var(--gold)] hover:underline">
+                管理后台
+              </Link>{" "}
+              微信扫码重新登录营地。已入库玩家也可从排行榜按昵称进入。
             </p>
           </form>
         </div>

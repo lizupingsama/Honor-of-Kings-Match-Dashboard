@@ -1,6 +1,6 @@
 import { prisma } from "./db";
 
-const MIN_GAMES = Number(process.env.LEADERBOARD_MIN_GAMES || "20") || 20;
+const MIN_GAMES = Number(process.env.LEADERBOARD_MIN_GAMES || "10") || 10;
 
 export function getMinGames() {
   return MIN_GAMES;
@@ -175,7 +175,56 @@ export async function getPowerLeaderboard(opts: {
   }));
 }
 
+export type WinRateSortBy = "winRate" | "wins";
+
 export async function getWinRateLeaderboard(opts?: {
+  area?: string;
+  limit?: number;
+  offset?: number;
+  minGames?: number;
+  sortBy?: WinRateSortBy;
+}) {
+  const minGames = opts?.minGames ?? MIN_GAMES;
+  const limit = opts?.limit ?? 100;
+  const offset = opts?.offset ?? 0;
+  const sortBy = opts?.sortBy ?? "winRate";
+
+  const players = await prisma.player.findMany({
+    where: {
+      seasonGames: { gte: minGames },
+      ...(opts?.area && opts.area !== "all" ? { area: opts.area } : {}),
+    },
+  });
+
+  const rows = players.map((p) => ({
+    gameNickname: p.gameNickname,
+    area: p.area,
+    currentRank: p.currentRank,
+    currentStars: p.currentStars,
+    rankScore: p.rankScore,
+    peakRating: p.peakRating,
+    peakScore: p.peakScore,
+    seasonGames: p.seasonGames,
+    seasonWins: p.seasonWins,
+    winRate: p.seasonGames ? (p.seasonWins / p.seasonGames) * 100 : 0,
+  }));
+
+  rows.sort((a, b) => {
+    if (sortBy === "wins") {
+      return b.seasonWins - a.seasonWins || b.winRate - a.winRate || b.seasonGames - a.seasonGames;
+    }
+    return b.winRate - a.winRate || b.seasonWins - a.seasonWins || b.seasonGames - a.seasonGames;
+  });
+
+  return rows.slice(offset, offset + limit).map((row, i) => ({
+    ...row,
+    rank: offset + i + 1,
+    winRate: Math.round(row.winRate * 10) / 10,
+  }));
+}
+
+/** 单局平均评分榜：本地已同步对局的 score 均值 */
+export async function getAvgScoreLeaderboard(opts?: {
   area?: string;
   limit?: number;
   offset?: number;
@@ -185,33 +234,178 @@ export async function getWinRateLeaderboard(opts?: {
   const limit = opts?.limit ?? 100;
   const offset = opts?.offset ?? 0;
 
-  const players = await prisma.player.findMany({
+  const grouped = await prisma.match.groupBy({
+    by: ["playerId"],
     where: {
-      seasonGames: { gte: minGames },
-      ...(opts?.area && opts.area !== "all" ? { area: opts.area } : {}),
+      score: { not: null },
+      player: {
+        lastSyncAt: { not: null },
+        ...(opts?.area && opts.area !== "all" ? { area: opts.area } : {}),
+      },
     },
+    _avg: { score: true },
+    _count: { _all: true },
   });
 
-  return players
-    .map((p) => ({
-      gameNickname: p.gameNickname,
-      area: p.area,
-      currentRank: p.currentRank,
-      currentStars: p.currentStars,
-      rankScore: p.rankScore,
-      peakRating: p.peakRating,
-      peakScore: p.peakScore,
-      seasonGames: p.seasonGames,
-      seasonWins: p.seasonWins,
-      winRate: p.seasonGames ? (p.seasonWins / p.seasonGames) * 100 : 0,
-    }))
-    .sort((a, b) => b.winRate - a.winRate || b.seasonGames - a.seasonGames)
-    .slice(offset, offset + limit)
-    .map((row, i) => ({
-      ...row,
-      rank: offset + i + 1,
-      winRate: Math.round(row.winRate * 10) / 10,
-    }));
+  const qualified = grouped
+    .filter((g) => g._count._all >= minGames && g._avg.score != null)
+    .sort(
+      (a, b) =>
+        (b._avg.score ?? 0) - (a._avg.score ?? 0) || b._count._all - a._count._all,
+    )
+    .slice(offset, offset + limit);
+
+  if (!qualified.length) return [];
+
+  const players = await prisma.player.findMany({
+    where: { id: { in: qualified.map((g) => g.playerId) } },
+    select: {
+      id: true,
+      gameNickname: true,
+      area: true,
+      currentRank: true,
+      currentStars: true,
+    },
+  });
+  const byId = new Map(players.map((p) => [p.id, p]));
+
+  return qualified
+    .map((g, i) => {
+      const p = byId.get(g.playerId);
+      if (!p) return null;
+      return {
+        rank: offset + i + 1,
+        gameNickname: p.gameNickname,
+        area: p.area,
+        currentRank: p.currentRank,
+        currentStars: p.currentStars,
+        avgScore: Math.round((g._avg.score as number) * 10) / 10,
+        games: g._count._all,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
+}
+
+export type KdaSortBy = "kda" | "kills" | "deaths" | "assists";
+
+/** KDA 榜：场均击杀 / 死亡 / 助攻，以及综合 KDA */
+export async function getKdaLeaderboard(opts?: {
+  area?: string;
+  limit?: number;
+  offset?: number;
+  minGames?: number;
+  sortBy?: KdaSortBy;
+}) {
+  const minGames = opts?.minGames ?? MIN_GAMES;
+  const limit = opts?.limit ?? 100;
+  const offset = opts?.offset ?? 0;
+  const sortBy = opts?.sortBy ?? "kda";
+
+  const grouped = await prisma.match.groupBy({
+    by: ["playerId"],
+    where: {
+      player: {
+        lastSyncAt: { not: null },
+        ...(opts?.area && opts.area !== "all" ? { area: opts.area } : {}),
+      },
+    },
+    _sum: { kills: true, deaths: true, assists: true },
+    _count: { _all: true },
+  });
+
+  const rows = grouped
+    .filter((g) => g._count._all >= minGames)
+    .map((g) => {
+      const games = g._count._all;
+      const kills = g._sum.kills ?? 0;
+      const deaths = g._sum.deaths ?? 0;
+      const assists = g._sum.assists ?? 0;
+      const avgKills = Math.round((kills / games) * 100) / 100;
+      const avgDeaths = Math.round((deaths / games) * 100) / 100;
+      const avgAssists = Math.round((assists / games) * 100) / 100;
+      const avgKda =
+        deaths === 0
+          ? Math.round((kills + assists) * 100) / 100
+          : Math.round(((kills + assists) / deaths) * 100) / 100;
+      return {
+        playerId: g.playerId,
+        games,
+        avgKills,
+        avgDeaths,
+        avgAssists,
+        avgKda,
+      };
+    });
+
+  rows.sort((a, b) => {
+    if (sortBy === "kills") {
+      return b.avgKills - a.avgKills || b.avgKda - a.avgKda || b.games - a.games;
+    }
+    if (sortBy === "deaths") {
+      return b.avgDeaths - a.avgDeaths || b.avgKda - a.avgKda || b.games - a.games;
+    }
+    if (sortBy === "assists") {
+      return b.avgAssists - a.avgAssists || b.avgKda - a.avgKda || b.games - a.games;
+    }
+    return b.avgKda - a.avgKda || b.games - a.games || b.avgKills - a.avgKills;
+  });
+
+  const page = rows.slice(offset, offset + limit);
+  if (!page.length) return [];
+
+  const players = await prisma.player.findMany({
+    where: { id: { in: page.map((r) => r.playerId) } },
+    select: {
+      id: true,
+      gameNickname: true,
+      area: true,
+      currentRank: true,
+      currentStars: true,
+    },
+  });
+  const byId = new Map(players.map((p) => [p.id, p]));
+
+  return page
+    .map((r, i) => {
+      const p = byId.get(r.playerId);
+      if (!p) return null;
+      return {
+        rank: offset + i + 1,
+        gameNickname: p.gameNickname,
+        area: p.area,
+        currentRank: p.currentRank,
+        currentStars: p.currentStars,
+        games: r.games,
+        avgKills: r.avgKills,
+        avgDeaths: r.avgDeaths,
+        avgAssists: r.avgAssists,
+        avgKda: r.avgKda,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
+}
+
+export type HeroSortBy = "composite" | "winRate" | "games" | "avgKda" | "avgScore";
+
+/**
+ * 英雄综合分（0–100 量级）：
+ * 质量分 = 胜率×45% + 标准化KDA×30% + 标准化评分×25%
+ *   - KDA 按 10 封顶折算到 0–100
+ *   - 本场评分按 12 封顶折算到 0–100
+ * 再乘场次可信度：1 场约 0.41，10 场及以上为 1（避免极少场次虚高）
+ */
+export function heroCompositeScore(row: {
+  winRate: number;
+  avgKda: number;
+  avgScore: number;
+  games: number;
+}) {
+  const wr = Math.max(0, Math.min(100, row.winRate));
+  const kda = (Math.min(Math.max(row.avgKda, 0), 10) / 10) * 100;
+  const score = (Math.min(Math.max(row.avgScore, 0), 12) / 12) * 100;
+  const quality = wr * 0.45 + kda * 0.3 + score * 0.25;
+  const confidence = 0.35 + (0.65 * Math.min(Math.max(row.games, 0), 10)) / 10;
+  return Math.round(quality * confidence * 10) / 10;
 }
 
 export async function getHeroLeaderboard(opts: {
@@ -220,10 +414,12 @@ export async function getHeroLeaderboard(opts: {
   limit?: number;
   offset?: number;
   minGames?: number;
+  sortBy?: HeroSortBy;
 }) {
-  const minGames = opts.minGames ?? 10;
+  const minGames = opts.minGames ?? 1;
   const limit = opts.limit ?? 100;
   const offset = opts.offset ?? 0;
+  const sortBy = opts.sortBy ?? "composite";
 
   const stats = await prisma.heroStat.findMany({
     where: {
@@ -237,64 +433,80 @@ export async function getHeroLeaderboard(opts: {
     include: { player: true },
   });
 
-  return stats
-    .map((s) => ({
+  const rows = stats.map((s) => {
+    const winRate = s.games ? (s.wins / s.games) * 100 : 0;
+    const avgKda =
+      s.deaths === 0
+        ? s.kills + s.assists
+        : Math.round(((s.kills + s.assists) / s.deaths) * 100) / 100;
+    const avgScore = s.games ? Math.round((s.totalScore / s.games) * 10) / 10 : 0;
+    const base = {
       gameNickname: s.player.gameNickname,
       area: s.player.area,
       heroName: s.heroName,
       heroIcon: s.heroIcon,
       games: s.games,
       wins: s.wins,
-      winRate: s.games ? (s.wins / s.games) * 100 : 0,
-      avgKda:
-        s.deaths === 0
-          ? s.kills + s.assists
-          : Math.round(((s.kills + s.assists) / s.deaths) * 100) / 100,
-      avgScore: s.games ? Math.round((s.totalScore / s.games) * 10) / 10 : 0,
-    }))
-    .sort((a, b) => b.winRate - a.winRate || b.games - a.games || b.avgScore - a.avgScore)
-    .slice(offset, offset + limit)
-    .map((row, i) => ({
-      ...row,
-      rank: offset + i + 1,
-      winRate: Math.round(row.winRate * 10) / 10,
-    }));
+      winRate,
+      avgKda,
+      avgScore,
+    };
+    return {
+      ...base,
+      composite: heroCompositeScore(base),
+    };
+  });
+
+  rows.sort((a, b) => {
+    if (sortBy === "games") {
+      return b.games - a.games || b.winRate - a.winRate || b.avgScore - a.avgScore;
+    }
+    if (sortBy === "avgKda") {
+      return b.avgKda - a.avgKda || b.games - a.games || b.winRate - a.winRate;
+    }
+    if (sortBy === "avgScore") {
+      return b.avgScore - a.avgScore || b.games - a.games || b.winRate - a.winRate;
+    }
+    if (sortBy === "winRate") {
+      return b.winRate - a.winRate || b.games - a.games || b.avgScore - a.avgScore;
+    }
+    // composite（默认）
+    return b.composite - a.composite || b.games - a.games || b.winRate - a.winRate;
+  });
+
+  return rows.slice(offset, offset + limit).map((row, i) => ({
+    ...row,
+    rank: offset + i + 1,
+    winRate: Math.round(row.winRate * 10) / 10,
+  }));
 }
 
 export async function getActiveLeaderboard(opts?: {
   area?: string;
   limit?: number;
-  days?: number;
 }) {
-  const days = opts?.days ?? 7;
   const limit = opts?.limit ?? 100;
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   const players = await prisma.player.findMany({
     where: {
+      seasonGames: { gt: 0 },
       ...(opts?.area && opts.area !== "all" ? { area: opts.area } : {}),
     },
-    include: {
-      matches: {
-        where: { playedAt: { gte: since } },
-        select: { id: true },
-      },
-    },
+    orderBy: [{ seasonGames: "desc" }, { seasonWins: "desc" }],
+    take: limit,
   });
 
-  return players
-    .map((p) => ({
-      gameNickname: p.gameNickname,
-      area: p.area,
-      games: p.matches.length,
-      currentRank: p.currentRank,
-      currentStars: p.currentStars,
-      rankScore: p.rankScore,
-      peakRating: p.peakRating,
-      peakScore: p.peakScore,
-    }))
-    .filter((p) => p.games > 0)
-    .sort((a, b) => b.games - a.games)
-    .slice(0, limit)
-    .map((row, i) => ({ ...row, rank: i + 1 }));
+  return players.map((p, i) => ({
+    rank: i + 1,
+    gameNickname: p.gameNickname,
+    area: p.area,
+    games: p.seasonGames,
+    seasonGames: p.seasonGames,
+    seasonWins: p.seasonWins,
+    currentRank: p.currentRank,
+    currentStars: p.currentStars,
+    rankScore: p.rankScore,
+    peakRating: p.peakRating,
+    peakScore: p.peakScore,
+  }));
 }

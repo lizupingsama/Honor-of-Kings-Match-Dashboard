@@ -51,7 +51,7 @@ export function ScoreTrendChart({
         className="flex items-center justify-center text-sm text-[var(--muted)]"
         style={{ height }}
       >
-        暂无{METRIC_LABEL[metric] || "数据"}曲线（请在后台录入历史数据）
+        暂无{METRIC_LABEL[metric] || "数据"}曲线
       </div>
     );
   }

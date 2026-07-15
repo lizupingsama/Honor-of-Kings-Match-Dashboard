@@ -5,13 +5,19 @@ import {
   getPeakLeaderboard,
   getPowerLeaderboard,
   getWinRateLeaderboard,
+  getAvgScoreLeaderboard,
+  getKdaLeaderboard,
   getHeroLeaderboard,
   getActiveLeaderboard,
   getMinGames,
+  type HeroSortBy,
+  type WinRateSortBy,
+  type KdaSortBy,
 } from "@/lib/leaderboard";
 import {
   getPlayerScoreSeries,
   getTierScoreSeries,
+  getPeakMatchSeries,
   getHeroPowerSeries,
   type ScoreMetric,
 } from "@/lib/score-history";
@@ -44,7 +50,11 @@ export async function GET(req: Request) {
         const series = await getTierScoreSeries(nickname);
         return jsonOk({ nickname, metric, series });
       }
-      if (!["rankScore", "peakRating", "peakScore", "winRate"].includes(metric)) {
+      if (metric === "peakScore") {
+        const series = await getPeakMatchSeries(nickname);
+        return jsonOk({ nickname, metric, series });
+      }
+      if (!["rankScore", "peakRating", "winRate"].includes(metric)) {
         return jsonError("未知指标", 400);
       }
       const series = await getPlayerScoreSeries(nickname, metric as ScoreMetric);
@@ -73,13 +83,48 @@ export async function GET(req: Request) {
       return jsonOk({ type, rows, heroName });
     }
     if (type === "winrate") {
-      const rows = await getWinRateLeaderboard({ area, limit, offset });
+      const sortRaw = searchParams.get("sortBy") || "winRate";
+      const allowed: WinRateSortBy[] = ["winRate", "wins"];
+      const sortBy = (allowed.includes(sortRaw as WinRateSortBy)
+        ? sortRaw
+        : "winRate") as WinRateSortBy;
+      const rows = await getWinRateLeaderboard({ area, limit, offset, sortBy });
+      return jsonOk({ type, rows, minGames: getMinGames(), sortBy });
+    }
+    if (type === "avgscore") {
+      const rows = await getAvgScoreLeaderboard({ area, limit, offset });
       return jsonOk({ type, rows, minGames: getMinGames() });
+    }
+    if (type === "kda") {
+      const sortRaw = searchParams.get("sortBy") || "kda";
+      const allowed: KdaSortBy[] = ["kda", "kills", "deaths", "assists"];
+      const sortBy = (allowed.includes(sortRaw as KdaSortBy)
+        ? sortRaw
+        : "kda") as KdaSortBy;
+      const rows = await getKdaLeaderboard({ area, limit, offset, sortBy });
+      return jsonOk({ type, rows, minGames: getMinGames(), sortBy });
     }
     if (type === "hero") {
       if (!heroName) return jsonError("请指定英雄名称", 400);
-      const rows = await getHeroLeaderboard({ heroName, area, limit, offset });
-      return jsonOk({ type, rows, heroName, minGames: 10 });
+      const sortRaw = searchParams.get("sortBy") || "composite";
+      const allowed: HeroSortBy[] = [
+        "composite",
+        "winRate",
+        "games",
+        "avgKda",
+        "avgScore",
+      ];
+      const sortBy = (allowed.includes(sortRaw as HeroSortBy)
+        ? sortRaw
+        : "composite") as HeroSortBy;
+      const rows = await getHeroLeaderboard({
+        heroName,
+        area,
+        limit,
+        offset,
+        sortBy,
+      });
+      return jsonOk({ type, rows, heroName, minGames: 1, sortBy });
     }
     if (type === "active") {
       const rows = await getActiveLeaderboard({ area, limit });

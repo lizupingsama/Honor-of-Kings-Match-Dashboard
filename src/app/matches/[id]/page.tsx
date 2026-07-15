@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
+import { formatRankLabel } from "@/lib/rank";
 import { withBasePath } from "@/lib/base-path";
 
 export default function MatchDetailPage() {
@@ -58,7 +59,7 @@ export default function MatchDetailPage() {
         ? `${Math.floor(match.durationSec / 60)}分${match.durationSec % 60}秒`
         : "-",
     ],
-    ["段位", match.rankName ? `${match.rankName} ${match.stars ?? 0}星` : "-"],
+    ["段位", match.rankName ? formatRankLabel(match.rankName, match.stars ?? 0) : "-"],
     ["经济", match.economy != null ? String(match.economy) : "—"],
     ["伤害", match.damage != null ? String(match.damage) : "—"],
     ["时间", format(new Date(match.playedAt), "yyyy-MM-dd HH:mm")],

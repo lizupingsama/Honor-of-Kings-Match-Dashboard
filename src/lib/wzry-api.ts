@@ -15,8 +15,20 @@ export type NormalizedMatch = {
   durationSec?: number;
   rankName?: string;
   stars?: number;
+  /** 巅峰赛积分（对局结束后） */
+  peakScore?: number;
+  /** 本场巅峰分变化（new - old） */
+  peakDelta?: number;
   mvp?: boolean;
   gold?: boolean;
+  /** 奖牌文案，如 银牌打野 */
+  medal?: string;
+  /** 官方奖牌图 URL（evaluateUrlV3） */
+  medalIcon?: string;
+  /** mvp | svp */
+  mvpType?: "mvp" | "svp";
+  /** 阵营：blue | red */
+  side?: "blue" | "red";
   economy?: number;
   damage?: number;
   rawJson?: string;
@@ -913,8 +925,13 @@ export class ApizeroWzryApiClient implements WzryApiClient {
   }
 }
 
+import { CampWzryApiClient } from "./camp/camp-client";
+
 export function getWzryApiClient(): WzryApiClient {
   const provider = (process.env.WZRY_API_PROVIDER || "mock").toLowerCase();
+  if (provider === "camp" || provider === "kohcamp") {
+    return new CampWzryApiClient();
+  }
   if (provider === "apizero" || provider === "zero") {
     const base = process.env.WZRY_API_BASE_URL || "https://v1.apizero.cn/api/wzry-battle";
     return new ApizeroWzryApiClient(base, process.env.WZRY_API_KEY || undefined);

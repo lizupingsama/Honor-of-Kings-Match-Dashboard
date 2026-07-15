@@ -26,12 +26,15 @@ const TIER_OFFSET: Record<string, number> = {
 
 export function parseRankScore(rankName: string | null | undefined, stars = 0): number {
   if (!rankName) return 0;
-  const name = rankName.trim();
+  const name = stripRankStars(rankName.trim());
+  const embedded = rankName.match(/(\d+)\s*星\s*$/u);
+  const starCount =
+    stars > 0 ? stars : embedded ? Number(embedded[1]) : 0;
 
   // 王者 / 荣耀王者 / 最强王者 — stars count directly
   if (name.includes("王者")) {
     const base = 500;
-    return base + Math.max(0, stars);
+    return base + Math.max(0, starCount);
   }
 
   for (const [key, base] of Object.entries(RANK_BASE)) {
@@ -44,18 +47,24 @@ export function parseRankScore(rankName: string | null | undefined, stars = 0): 
         }
       }
       // Also match 青铜III style without space
-      return base + offset + Math.min(stars, 24);
+      return base + offset + Math.min(starCount, 24);
     }
   }
 
   // Fallback: try numeric extraction
-  return Math.max(0, stars);
+  return Math.max(0, starCount);
+}
+
+export function stripRankStars(rankName: string): string {
+  return rankName.replace(/\s*\d+\s*星\s*$/u, "").trim();
 }
 
 export function formatRankLabel(rankName: string | null | undefined, stars = 0): string {
   if (!rankName) return "未知";
-  if (rankName.includes("王者")) return `${rankName} ${stars}星`;
-  return stars > 0 ? `${rankName} ${stars}星` : rankName;
+  const name = stripRankStars(rankName);
+  if (!name) return stars > 0 ? `${stars}星` : "未知";
+  if (stars > 0) return `${name} ${stars}星`;
+  return name;
 }
 
 export function scoreToApproxLabel(score: number): string {

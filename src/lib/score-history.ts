@@ -143,7 +143,7 @@ export async function getPlayerScoreSeries(
   return series;
 }
 
-/** 段位曲线：来自对局中的段位换算分 */
+/** 段位曲线：与个人页一致，仅排位对局的段位换算分 */
 export async function getTierScoreSeries(gameNickname: string) {
   const player = await prisma.player.findUnique({
     where: { gameNickname },
@@ -152,15 +152,29 @@ export async function getTierScoreSeries(gameNickname: string) {
   if (!player) return [];
 
   const matches = await prisma.match.findMany({
-    where: { playerId: player.id, rankScore: { not: null } },
+    where: {
+      playerId: player.id,
+      mode: "ranked",
+      rankScore: { not: null },
+    },
     orderBy: { playedAt: "asc" },
-    select: { playedAt: true, rankScore: true, heroName: true, result: true },
+    select: {
+      playedAt: true,
+      rankScore: true,
+      rankName: true,
+      stars: true,
+      heroName: true,
+      result: true,
+    },
   });
 
   if (matches.length) {
     return matches.map((m) => ({
       t: m.playedAt.toISOString(),
       value: m.rankScore as number,
+      score: m.rankScore as number,
+      label: m.rankName,
+      stars: m.stars,
       source: "sync",
       hero: m.heroName,
       result: m.result,
@@ -172,6 +186,54 @@ export async function getTierScoreSeries(gameNickname: string) {
       {
         t: new Date().toISOString(),
         value: player.tierScore,
+        score: player.tierScore,
+        label: player.currentRank,
+        stars: player.currentStars,
+        source: "current",
+      },
+    ];
+  }
+  return [];
+}
+
+/** 巅峰分曲线：与个人页一致，来自巅峰对局的 peakScore */
+export async function getPeakMatchSeries(gameNickname: string) {
+  const player = await prisma.player.findUnique({
+    where: { gameNickname },
+    select: { id: true, peakScore: true },
+  });
+  if (!player) return [];
+
+  const matches = await prisma.match.findMany({
+    where: {
+      playerId: player.id,
+      mode: "peak",
+      peakScore: { not: null },
+    },
+    orderBy: { playedAt: "asc" },
+    select: {
+      playedAt: true,
+      peakScore: true,
+      heroName: true,
+      result: true,
+    },
+  });
+
+  if (matches.length) {
+    return matches.map((m) => ({
+      t: m.playedAt.toISOString(),
+      value: m.peakScore as number,
+      source: "sync",
+      hero: m.heroName,
+      result: m.result,
+    }));
+  }
+
+  if (player.peakScore > 0) {
+    return [
+      {
+        t: new Date().toISOString(),
+        value: player.peakScore,
         source: "current",
       },
     ];
