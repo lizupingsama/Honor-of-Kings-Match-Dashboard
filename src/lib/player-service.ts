@@ -2,6 +2,7 @@ import { prisma } from "./db";
 import { getWzryApiClient, WzryApiError } from "./wzry-api";
 import { parseRankScore } from "./rank";
 import { recordScoreSnapshot } from "./score-history";
+import { CAMP_BATTLE_SYNC_MAX_MATCHES } from "./camp/camp-api";
 
 const COOLDOWN = Number(process.env.SYNC_COOLDOWN_SECONDS || "300") || 300;
 const AUTO_SYNC_INTERVAL_SECONDS = Math.max(
@@ -138,9 +139,12 @@ async function persistFetchResult(
   result: Awaited<ReturnType<ReturnType<typeof getWzryApiClient>["fetchBattles"]>>,
 ) {
   const tierScore = parseRankScore(result.profile.currentRank, result.profile.currentStars);
-  const seasonWins = result.profile.seasonWins ?? 0;
-  const seasonGames = result.profile.seasonGames ?? 0;
-  const winRate = seasonGames ? (seasonWins / seasonGames) * 100 : 0;
+  const seasonWins = result.profile.seasonWins;
+  const seasonGames = result.profile.seasonGames;
+  const winRate =
+    seasonGames != null && seasonGames > 0 && seasonWins != null
+      ? (seasonWins / seasonGames) * 100
+      : null;
 
   const updated = await prisma.player.update({
     where: { id: playerId },
@@ -152,11 +156,11 @@ async function persistFetchResult(
       currentRank: result.profile.currentRank,
       currentStars: result.profile.currentStars,
       tierScore,
-      // 不覆盖 0–110 的排位/巅峰评分
-      seasonWins,
-      seasonGames,
-      mvpCount: result.profile.mvpCount ?? 0,
-      goldCount: result.profile.goldCount ?? 0,
+      // 不覆盖 0–110 的排位/巅峰评分；增量时未带赛季字段则保留原值
+      ...(seasonWins != null ? { seasonWins } : {}),
+      ...(seasonGames != null ? { seasonGames } : {}),
+      ...(result.profile.mvpCount != null ? { mvpCount: result.profile.mvpCount } : {}),
+      ...(result.profile.goldCount != null ? { goldCount: result.profile.goldCount } : {}),
       lastSyncAt: new Date(),
       lastSyncError: null,
       queryCount: { increment: 1 },
@@ -167,7 +171,12 @@ async function persistFetchResult(
     rankScore: updated.rankScore || null,
     peakRating: updated.peakRating || null,
     peakScore: updated.peakScore || null,
-    winRate,
+    winRate:
+      winRate != null
+        ? winRate
+        : updated.seasonGames
+          ? (updated.seasonWins / updated.seasonGames) * 100
+          : 0,
     source: "sync",
   });
 
@@ -262,9 +271,27 @@ async function persistFetchResult(
     });
   }
 
+  await trimMatchesToLatest(playerId, CAMP_BATTLE_SYNC_MAX_MATCHES);
   await recomputeRankDeltas(playerId);
   await recomputeHeroStats(playerId);
   return pulled;
+}
+
+/** 只保留最近 keep 场，超出的旧对局删除 */
+async function trimMatchesToLatest(playerId: string, keep: number) {
+  const latest = await prisma.match.findMany({
+    where: { playerId },
+    orderBy: { playedAt: "desc" },
+    take: keep,
+    select: { id: true },
+  });
+  if (latest.length < keep) return;
+  await prisma.match.deleteMany({
+    where: {
+      playerId,
+      id: { notIn: latest.map((m) => m.id) },
+    },
+  });
 }
 
 /** 按相邻排位场次的 rankScore 差写入 rankDelta（约等于星数变化） */
@@ -364,9 +391,22 @@ export async function lookupPlayerByCampId(
     });
 
     try {
+      const matchCount = await prisma.match.count({ where: { playerId: player.id } });
+      const seeded = matchCount >= CAMP_BATTLE_SYNC_MAX_MATCHES;
+      const knownExternalIds = seeded
+        ? (
+            await prisma.match.findMany({
+              where: { playerId: player.id },
+              orderBy: { playedAt: "desc" },
+              take: CAMP_BATTLE_SYNC_MAX_MATCHES,
+              select: { externalId: true },
+            })
+          ).map((m) => m.externalId)
+        : undefined;
+
       const result = await client.fetchBattles(hit.campId, {
-        num: 60,
         nickname: displayName,
+        knownExternalIds,
       });
       result.profile.gameNickname = displayName;
       const pulled = await persistFetchResult(player.id, displayName, result);
@@ -376,7 +416,9 @@ export async function lookupPlayerByCampId(
           status: "success",
           pulled,
           finishedAt: new Date(),
-          message: `同步 ${pulled} 场`,
+          message: seeded
+            ? `增量同步 ${pulled} 场新对局（保留最近 ${CAMP_BATTLE_SYNC_MAX_MATCHES} 条）`
+            : `全量同步 ${pulled} 场（8 页 / 最多 ${CAMP_BATTLE_SYNC_MAX_MATCHES} 条）`,
         },
       });
     } catch (err) {
@@ -458,7 +500,7 @@ export async function getPlayerDashboard(
   const side = query?.side || "all";
   const hero = query?.hero || "";
   const page = Math.max(1, query?.page || 1);
-  const pageSize = 20;
+  const pageSize = 100;
 
   const since = (() => {
     const now = Date.now();
@@ -545,6 +587,7 @@ export async function getPlayerDashboard(
       gameNickname: player.gameNickname,
       campId: player.campId,
       area: player.area,
+      gameAvatarUrl: player.gameAvatarUrl,
       currentRank: player.currentRank,
       currentStars: player.currentStars,
       rankScore: player.rankScore,
@@ -621,6 +664,28 @@ export async function syncAllPlayers() {
   });
 
   return syncPlayers(players, { ignoreCooldown: true });
+}
+
+/** 管理后台：按玩家 ID 强制同步，忽略冷却 */
+export async function syncPlayerById(playerId: string) {
+  const player = await prisma.player.findUnique({
+    where: { id: playerId },
+    select: { id: true, gameNickname: true, campId: true },
+  });
+  if (!player) {
+    throw new PlayerServiceError("玩家不存在", 404);
+  }
+  const campId = player.campId.includes(":")
+    ? player.campId.split(":")[0]
+    : player.campId;
+  if (!/^\d{5,15}$/.test(campId)) {
+    throw new PlayerServiceError("该玩家缺少有效营地 ID，无法同步", 400);
+  }
+  await lookupPlayerByCampId(campId, {
+    forceRefresh: true,
+    ignoreCooldown: true,
+  });
+  return { nickname: player.gameNickname, campId };
 }
 
 async function syncPlayers(

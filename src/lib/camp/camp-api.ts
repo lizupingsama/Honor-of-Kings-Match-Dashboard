@@ -325,14 +325,132 @@ export async function getProfile(friendUserId: string) {
   });
 }
 
-export async function getMoreBattleList(friendUserId: string) {
+export async function getMoreBattleList(
+  friendUserId: string,
+  options?: { lastTime?: number | string },
+) {
   return request("/game/morebattlelist", {
-    lastTime: 0,
+    lastTime: options?.lastTime ?? 0,
     recommendPrivacy: 0,
     apiVersion: 5,
     friendUserId,
     option: 0,
   });
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 刷新固定：8 页、最多 100 条；不开放给玩家自行加拉 */
+export const CAMP_BATTLE_SYNC_MAX_PAGES = 8;
+export const CAMP_BATTLE_SYNC_MAX_MATCHES = 100;
+
+/**
+ * 翻页拉取 morebattlelist。
+ * 官方接口不返回总页数，用 hasMore + lastTime 翻页。
+ * - 全量：最多 8 页 / 100 条
+ * - 增量：传入 stopAtExternalIds，从最新页往下拉，撞到已知对局即停
+ */
+export async function fetchMoreBattleListPages(
+  friendUserId: string,
+  options?: {
+    maxPages?: number;
+    maxMatches?: number;
+    delayMs?: number;
+    stopAtExternalIds?: Iterable<string>;
+  },
+) {
+  const maxPages = Math.max(
+    1,
+    options?.maxPages ?? CAMP_BATTLE_SYNC_MAX_PAGES,
+  );
+  const delayMs = Math.max(
+    0,
+    options?.delayMs ??
+      (Number(process.env.CAMP_BATTLE_PAGE_DELAY_MS || "400") || 400),
+  );
+  const maxMatches = Math.max(
+    1,
+    options?.maxMatches ?? CAMP_BATTLE_SYNC_MAX_MATCHES,
+  );
+  const stopAt = options?.stopAtExternalIds
+    ? new Set(
+        [...options.stopAtExternalIds]
+          .map((id) => String(id || "").trim())
+          .filter(Boolean),
+      )
+    : null;
+  const incremental = Boolean(stopAt && stopAt.size > 0);
+
+  const list: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  let lastTime: number | string = 0;
+  let pagesFetched = 0;
+  let hasMore = true;
+  let stoppedAtKnown = false;
+
+  while (hasMore && pagesFetched < maxPages) {
+    if (pagesFetched > 0 && delayMs > 0) {
+      await sleep(delayMs);
+    }
+
+    const res = await getMoreBattleList(friendUserId, { lastTime });
+    const data =
+      res && typeof res === "object" && "data" in res && res.data && typeof res.data === "object"
+        ? (res.data as Record<string, unknown>)
+        : (res as Record<string, unknown>);
+    const pageList = Array.isArray(data.list)
+      ? (data.list as Record<string, unknown>[])
+      : Array.isArray(data.battle_list)
+        ? (data.battle_list as Record<string, unknown>[])
+        : [];
+
+    for (const row of pageList) {
+      const id = String(row.gameSeq || row.battleId || row.battle_id || "");
+      const key =
+        id ||
+        [
+          row.dtEventTime ?? row.dteventtime ?? "",
+          row.heroId ?? "",
+          row.killcnt ?? row.kills ?? "",
+          row.deadcnt ?? row.deaths ?? "",
+          row.assistcnt ?? row.assists ?? "",
+        ].join("-");
+
+      if (incremental && id && stopAt!.has(id)) {
+        stoppedAtKnown = true;
+        break;
+      }
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push(row);
+      if (list.length >= maxMatches) break;
+    }
+
+    pagesFetched += 1;
+    if (stoppedAtKnown || list.length >= maxMatches) {
+      hasMore = false;
+      break;
+    }
+
+    hasMore = Boolean(data.hasMore);
+    const nextLast = data.lastTime;
+    if (nextLast == null || nextLast === "" || nextLast === lastTime) {
+      hasMore = false;
+    } else {
+      lastTime = nextLast as number | string;
+    }
+  }
+
+  return {
+    list,
+    pagesFetched,
+    hasMore,
+    maxPages,
+    incremental,
+    stoppedAtKnown,
+  };
 }
 
 export async function getSeasonpage(roleId: string) {

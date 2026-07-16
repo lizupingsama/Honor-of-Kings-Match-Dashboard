@@ -64,6 +64,7 @@ export default function AdminPage() {
   const [qrcodeBase64, setQrcodeBase64] = useState<string | null>(null);
   const [qrStatus, setQrStatus] = useState("");
   const [syncingAll, setSyncingAll] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
   const [syncMessage, setSyncMessage] = useState("");
 
@@ -274,6 +275,32 @@ export default function AdminPage() {
       setError("网络错误");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function syncOne(id: string, name: string) {
+    if (!campAuth?.loggedIn) {
+      setError("请先登录营地");
+      return;
+    }
+    setSyncingId(id);
+    setError("");
+    setSyncMessage("");
+    try {
+      const res = await fetch(withBasePath(`/api/admin/players/${id}/sync`), {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        setError(json.error || `刷新「${name}」失败`);
+        return;
+      }
+      setSyncMessage(`已刷新「${name}」（不受冷却限制）`);
+      await load();
+    } catch {
+      setError("网络错误");
+    } finally {
+      setSyncingId(null);
     }
   }
 
@@ -546,6 +573,20 @@ export default function AdminPage() {
                   </td>
                   <td>
                     <div className="flex gap-2">
+                      <button
+                        className="btn btn-ghost !px-3 !py-1 text-xs"
+                        onClick={() => syncOne(p.id, p.gameNickname)}
+                        disabled={
+                          syncingId === p.id || syncingAll || !campAuth?.loggedIn
+                        }
+                        title={
+                          !campAuth?.loggedIn
+                            ? "请先登录营地"
+                            : "强制同步战绩（忽略冷却）"
+                        }
+                      >
+                        {syncingId === p.id ? "刷新中…" : "刷新"}
+                      </button>
                       <Link
                         href={`/admin/players/${p.id}`}
                         className="btn btn-ghost !px-3 !py-1 text-xs"

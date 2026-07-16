@@ -73,7 +73,15 @@ export class WzryApiError extends Error {
 export interface WzryApiClient {
   /** 按王者名称查询（可返回多名同名提示，mock 精确命中一人） */
   searchByNickname(nickname: string): Promise<PlayerSearchHit[]>;
-  fetchBattles(campId: string, options?: { num?: number; nickname?: string }): Promise<FetchResult>;
+  fetchBattles(
+    campId: string,
+    options?: {
+      num?: number;
+      nickname?: string;
+      /** 已入库对局 externalId；传入则增量拉取（撞到已知对局即停） */
+      knownExternalIds?: string[];
+    },
+  ): Promise<FetchResult>;
 }
 
 function detectMode(mapName: string): NormalizedMatch["mode"] {

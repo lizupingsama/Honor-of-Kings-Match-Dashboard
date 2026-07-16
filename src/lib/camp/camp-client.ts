@@ -1,6 +1,8 @@
 import {
   CampApiError,
-  getMoreBattleList,
+  CAMP_BATTLE_SYNC_MAX_MATCHES,
+  CAMP_BATTLE_SYNC_MAX_PAGES,
+  fetchMoreBattleListPages,
   getProfile,
   getSeasonpage,
 } from "./camp-api";
@@ -372,17 +374,30 @@ export class CampWzryApiClient implements WzryApiClient {
 
   async fetchBattles(
     campId: string,
-    options?: { num?: number; nickname?: string },
+    options?: {
+      num?: number;
+      nickname?: string;
+      knownExternalIds?: string[];
+    },
   ): Promise<FetchResult> {
     const userId = campId.includes(":") ? campId.split(":")[0] : campId.trim();
     if (!/^\d{5,15}$/.test(userId)) {
       throw new WzryApiError("营地 ID 无效", "invalid_id");
     }
 
+    const knownIds = (options?.knownExternalIds || [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const incremental = knownIds.length > 0;
+
     try {
-      const [profileRes, battleRes] = await Promise.all([
+      const [profileRes, battlePages] = await Promise.all([
         getProfile(userId),
-        getMoreBattleList(userId),
+        fetchMoreBattleListPages(userId, {
+          maxPages: CAMP_BATTLE_SYNC_MAX_PAGES,
+          maxMatches: CAMP_BATTLE_SYNC_MAX_MATCHES,
+          stopAtExternalIds: incremental ? knownIds : undefined,
+        }),
       ]);
 
       const { data, role } = extractRole(profileRes);
@@ -408,30 +423,33 @@ export class CampWzryApiClient implements WzryApiClient {
       );
       const avatar = String(role.roleIcon || role.avatar || "") || undefined;
 
-      const battleData = asRecord(battleRes.data) || battleRes;
-      const battles = asList(battleData.list || battleData.battle_list);
-
+      const battles = battlePages.list;
       const matches = await Promise.all(
         battles.map((row, idx) => mapBattleRow(row, userId, idx)),
       );
-      const limited = options?.num ? matches.slice(0, options.num) : matches;
+
+      // 增量时若无赛季页，不覆盖本地 mvp/金牌/赛季统计
+      const mvpCount = incremental ? undefined : matches.filter((m) => m.mvp).length;
+      const goldCount = incremental
+        ? seasonStats?.goldCount
+        : (seasonStats?.goldCount ?? matches.filter((m) => m.gold).length);
 
       return {
         profile: {
           campId: userId,
           gameNickname,
           gameAvatarUrl: avatar,
-          currentRank: rankName || limited[0]?.rankName || "未知",
-          currentStars: stars || limited[0]?.stars || 0,
-          seasonGames: seasonStats?.seasonGames ?? limited.length,
+          currentRank: rankName || matches[0]?.rankName || "未知",
+          currentStars: stars || matches[0]?.stars || 0,
+          seasonGames: seasonStats?.seasonGames ?? (incremental ? undefined : matches.length),
           seasonWins:
-            seasonStats?.seasonWins ?? limited.filter((m) => m.result === "win").length,
-          mvpCount: limited.filter((m) => m.mvp).length,
-          goldCount:
-            seasonStats?.goldCount ?? limited.filter((m) => m.gold).length,
+            seasonStats?.seasonWins ??
+            (incremental ? undefined : matches.filter((m) => m.result === "win").length),
+          mvpCount,
+          goldCount,
           area: parseArea(areaText),
         },
-        matches: limited,
+        matches,
       };
     } catch (err) {
       mapCampError(err);

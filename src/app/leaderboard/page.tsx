@@ -6,6 +6,7 @@ import Link from "next/link";
 import { formatRankLabel } from "@/lib/rank";
 import { ScoreTrendChart, type TrendPoint } from "@/components/score-trend-chart";
 import { RankChart } from "@/components/rank-chart";
+import { PlayerAvatar } from "@/components/player-avatar";
 import { withBasePath } from "@/lib/base-path";
 
 type BoardType =
@@ -27,6 +28,7 @@ type ChartMetric = "rankScore" | "peakRating" | "peakScore" | "combatPower" | "t
 type Row = {
   rank: number;
   gameNickname: string;
+  gameAvatarUrl?: string | null;
   currentRank?: string | null;
   currentStars?: number;
   rankScore?: number;
@@ -456,6 +458,11 @@ export default function LeaderboardPage() {
                           className="group mt-1 inline-flex min-w-0 flex-wrap items-center gap-2 text-[var(--gold-bright)]"
                           aria-label={`进入 ${row.gameNickname} 的主页`}
                         >
+                          <PlayerAvatar
+                            src={row.gameAvatarUrl}
+                            name={row.gameNickname}
+                            size={28}
+                          />
                           <span className="break-words text-lg font-semibold">
                             {row.gameNickname}
                           </span>
@@ -587,6 +594,11 @@ export default function LeaderboardPage() {
                           aria-label={`进入 ${row.gameNickname} 的主页`}
                           onClick={(e) => e.stopPropagation()}
                         >
+                          <PlayerAvatar
+                            src={row.gameAvatarUrl}
+                            name={row.gameNickname}
+                            size={28}
+                          />
                           <span className="max-w-32 truncate font-medium underline decoration-[var(--line)] decoration-dotted underline-offset-4 group-hover:decoration-[var(--gold-bright)] sm:max-w-none">
                             {row.gameNickname}
                           </span>

@@ -31,6 +31,7 @@ export async function getRankLeaderboard(opts?: {
   return players.map((p, i) => ({
     rank: offset + i + 1,
     gameNickname: p.gameNickname,
+    gameAvatarUrl: p.gameAvatarUrl,
     area: p.area,
     currentRank: p.currentRank,
     currentStars: p.currentStars,
@@ -66,6 +67,7 @@ export async function getRankRatingLeaderboard(opts?: {
   return players.map((p, i) => ({
     rank: offset + i + 1,
     gameNickname: p.gameNickname,
+    gameAvatarUrl: p.gameAvatarUrl,
     area: p.area,
     rankScore: p.rankScore,
     peakRating: p.peakRating,
@@ -94,6 +96,7 @@ export async function getPeakRatingLeaderboard(opts?: {
   return players.map((p, i) => ({
     rank: offset + i + 1,
     gameNickname: p.gameNickname,
+    gameAvatarUrl: p.gameAvatarUrl,
     area: p.area,
     currentRank: p.currentRank,
     currentStars: p.currentStars,
@@ -127,6 +130,7 @@ export async function getPeakLeaderboard(opts?: {
   return players.map((p, i) => ({
     rank: offset + i + 1,
     gameNickname: p.gameNickname,
+    gameAvatarUrl: p.gameAvatarUrl,
     area: p.area,
     currentRank: p.currentRank,
     currentStars: p.currentStars,
@@ -165,6 +169,7 @@ export async function getPowerLeaderboard(opts: {
   return stats.map((s, i) => ({
     rank: offset + i + 1,
     gameNickname: s.player.gameNickname,
+    gameAvatarUrl: s.player.gameAvatarUrl,
     area: s.player.area,
     heroName: s.heroName,
     heroIcon: s.heroIcon,
@@ -198,6 +203,7 @@ export async function getWinRateLeaderboard(opts?: {
 
   const rows = players.map((p) => ({
     gameNickname: p.gameNickname,
+    gameAvatarUrl: p.gameAvatarUrl,
     area: p.area,
     currentRank: p.currentRank,
     currentStars: p.currentStars,
@@ -262,6 +268,7 @@ export async function getAvgScoreLeaderboard(opts?: {
     select: {
       id: true,
       gameNickname: true,
+      gameAvatarUrl: true,
       area: true,
       currentRank: true,
       currentStars: true,
@@ -276,6 +283,7 @@ export async function getAvgScoreLeaderboard(opts?: {
       return {
         rank: offset + i + 1,
         gameNickname: p.gameNickname,
+        gameAvatarUrl: p.gameAvatarUrl,
         area: p.area,
         currentRank: p.currentRank,
         currentStars: p.currentStars,
@@ -358,6 +366,7 @@ export async function getKdaLeaderboard(opts?: {
     select: {
       id: true,
       gameNickname: true,
+      gameAvatarUrl: true,
       area: true,
       currentRank: true,
       currentStars: true,
@@ -372,6 +381,7 @@ export async function getKdaLeaderboard(opts?: {
       return {
         rank: offset + i + 1,
         gameNickname: p.gameNickname,
+        gameAvatarUrl: p.gameAvatarUrl,
         area: p.area,
         currentRank: p.currentRank,
         currentStars: p.currentStars,
@@ -442,6 +452,7 @@ export async function getHeroLeaderboard(opts: {
     const avgScore = s.games ? Math.round((s.totalScore / s.games) * 10) / 10 : 0;
     const base = {
       gameNickname: s.player.gameNickname,
+      gameAvatarUrl: s.player.gameAvatarUrl,
       area: s.player.area,
       heroName: s.heroName,
       heroIcon: s.heroIcon,
@@ -499,6 +510,7 @@ export async function getActiveLeaderboard(opts?: {
   return players.map((p, i) => ({
     rank: i + 1,
     gameNickname: p.gameNickname,
+    gameAvatarUrl: p.gameAvatarUrl,
     area: p.area,
     games: p.seasonGames,
     seasonGames: p.seasonGames,

@@ -9,6 +9,7 @@ import { ScoreTrendChart } from "@/components/score-trend-chart";
 import { HeroGrid } from "@/components/hero-grid";
 import { MatchTable } from "@/components/match-table";
 import { PlayerLikeButton } from "@/components/player-like-button";
+import { PlayerAvatar } from "@/components/player-avatar";
 import { withBasePath } from "@/lib/base-path";
 
 type DashData = {
@@ -16,6 +17,7 @@ type DashData = {
     gameNickname: string;
     campId: string;
     area: string;
+    gameAvatarUrl?: string | null;
     currentRank?: string | null;
     currentStars?: number;
     rankScore?: number;
@@ -218,6 +220,11 @@ function PlayerDashboard() {
             </span>
           </div>
           <h1 className="mt-2 flex flex-wrap items-center gap-3 text-2xl font-semibold text-[var(--gold-bright)]">
+            <PlayerAvatar
+              src={data.player.gameAvatarUrl}
+              name={data.player.gameNickname}
+              size={44}
+            />
             <span className="min-w-0 break-words">{data.player.gameNickname}</span>
             <PlayerLikeButton
               nickname={data.player.gameNickname}
