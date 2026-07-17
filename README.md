@@ -216,8 +216,14 @@ cp .env.example .env
 
 npm install
 npm run db:setup   # 首次部署
-npm run build
+npm run build      # 含 prisma db push，schema 变更后务必重新 build
 npm run start      # 默认 http://0.0.0.0:3000
+```
+
+若只更新了代码、未重新 build，schema 变更后至少执行一次：
+
+```bash
+npm run db:push && pm2 restart <app-name>   # 或重启 next start 进程
 ```
 
 可用环境变量指定端口：
@@ -351,7 +357,7 @@ GET /api/players/:nickname?range=30&mode=all&result=all&page=1
 | 命令 | 说明 |
 |------|------|
 | `npm run dev` | 开发服务器 |
-| `npm run build` | `prisma generate` + 生产构建 |
+| `npm run build` | `prisma generate` + `prisma db push` + 生产构建 |
 | `npm run start` | 启动生产服务 |
 | `npm run lint` | ESLint |
 | `npm run db:push` | 同步 Prisma schema 到数据库 |

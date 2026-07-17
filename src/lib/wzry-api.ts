@@ -112,6 +112,11 @@ export interface WzryApiClient {
       enrichDetails?: boolean;
     },
   ): Promise<FetchResult>;
+  /**
+   * 检查目标玩家是否开放战绩查询。
+   * 未开放时应抛出 code=hidden；未实现则跳过预检。
+   */
+  assertBattleQueryAllowed?(campId: string): Promise<void>;
 }
 
 function detectMode(mapName: string): NormalizedMatch["mode"] {
@@ -255,6 +260,15 @@ export class MockWzryApiClient implements WzryApiClient {
         currentStars: (seed % 20) + 1,
       },
     ];
+  }
+
+  async assertBattleQueryAllowed(campId: string): Promise<void> {
+    if (campId === "0000000000") {
+      throw new WzryApiError(
+        "召唤师隐藏了个人战绩，请在王者营地开放战绩后重试",
+        "hidden",
+      );
+    }
   }
 
   async fetchBattles(

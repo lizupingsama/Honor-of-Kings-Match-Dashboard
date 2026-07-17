@@ -181,7 +181,12 @@ function PlayerDashboard() {
       if (wasSyncingRef.current) {
         wasSyncingRef.current = false;
         setRefreshing(false);
-        setMessage("同步完成");
+        // 仅成功时提示「同步完成」；失败由 lastSyncError / syncStatus.message 展示
+        if (data?.syncStatus?.status === "failed") {
+          setMessage("");
+        } else {
+          setMessage("同步完成");
+        }
       }
       return;
     }
@@ -191,7 +196,7 @@ function PlayerDashboard() {
       load().catch(() => {});
     }, 800);
     return () => clearInterval(timer);
-  }, [syncing, load]);
+  }, [syncing, load, data?.syncStatus?.status]);
 
   const sortedHeroes = useMemo(() => {
     if (!data?.heroStats) return [];

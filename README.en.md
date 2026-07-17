@@ -215,8 +215,14 @@ cp .env.example .env
 
 npm install
 npm run db:setup   # first deploy only
-npm run build
+npm run build      # includes prisma db push; rebuild after schema changes
 npm run start      # default http://0.0.0.0:3000
+```
+
+If code was updated without a rebuild, sync schema at least once:
+
+```bash
+npm run db:push && pm2 restart <app-name>   # or restart the next start process
 ```
 
 Port:
@@ -344,7 +350,7 @@ Typical success envelope:
 | Script | Description |
 |--------|-------------|
 | `npm run dev` | Dev server |
-| `npm run build` | `prisma generate` + production build |
+| `npm run build` | `prisma generate` + `prisma db push` + production build |
 | `npm run start` | Start production server |
 | `npm run lint` | ESLint |
 | `npm run db:push` | Push Prisma schema to DB |

@@ -8,7 +8,7 @@ import {
 import { parseRankScore } from "./rank";
 import { clampRating } from "./rating";
 import { recordHeroPowerSnapshot, recordScoreSnapshot } from "./score-history";
-import { CAMP_BATTLE_SYNC_MAX_MATCHES } from "./camp/camp-api";
+import { CampApiError, CAMP_BATTLE_SYNC_MAX_MATCHES } from "./camp/camp-api";
 import { enrichMatchesWithBattleDetail } from "./camp/camp-client";
 import { parseEquipsJson } from "./match-equips";
 
@@ -550,6 +550,15 @@ export async function startPlayerSync(pending: PendingPlayerSync) {
   const jobId = pending.jobId;
 
   try {
+    // 预检：未开放战绩查询则直接失败，避免继续拉列表/详情
+    if (client.assertBattleQueryAllowed) {
+      await prisma.syncJob.update({
+        where: { id: jobId },
+        data: { message: "正在检查查询权限…" },
+      });
+      await client.assertBattleQueryAllowed(pending.campId);
+    }
+
     await prisma.syncJob.update({
       where: { id: jobId },
       data: { message: "正在同步战绩列表…" },
@@ -597,11 +606,10 @@ export async function startPlayerSync(pending: PendingPlayerSync) {
     let detailNote = "";
     if (result.roleId) {
       try {
-        // 增量同步时 result.matches 可能很少；补拉库中尚无战力的对局
-        const missingPower = await prisma.match.findMany({
+        // 本批新对局 + 库中装备为空或战力为空的对局，均需重拉详情
+        const recentRows = await prisma.match.findMany({
           where: {
             playerId: pending.playerId,
-            combatPower: null,
             rawJson: { not: null },
           },
           orderBy: { playedAt: "desc" },
@@ -617,12 +625,19 @@ export async function startPlayerSync(pending: PendingPlayerSync) {
             kills: true,
             deaths: true,
             assists: true,
+            combatPower: true,
+            equipsJson: true,
           },
         });
+        const incompleteRows = recentRows.filter(
+          (row) =>
+            row.combatPower == null ||
+            parseEquipsJson(row.equipsJson).length === 0,
+        );
         const byExternal = new Map(
           result.matches.map((m) => [m.externalId, m] as const),
         );
-        for (const row of missingPower) {
+        for (const row of incompleteRows) {
           if (byExternal.has(row.externalId)) continue;
           byExternal.set(row.externalId, {
             externalId: row.externalId,
@@ -655,7 +670,20 @@ export async function startPlayerSync(pending: PendingPlayerSync) {
           await recomputeHeroStats(pending.playerId);
           await refreshHeroPowerHistoryFromMatches(pending.playerId);
         }
-      } catch {
+      } catch (err) {
+        // 未开放查询 / 登录失效 / 频控：整次同步失败，不再假装成功
+        if (
+          (err instanceof CampApiError &&
+            (err.code === "hidden" ||
+              err.code === "auth" ||
+              err.code === "rate_limit")) ||
+          (err instanceof WzryApiError &&
+            (err.code === "hidden" ||
+              err.code === "config" ||
+              err.code === "rate_limit"))
+        ) {
+          throw err;
+        }
         detailNote = "（详情补全未完成）";
       }
     }

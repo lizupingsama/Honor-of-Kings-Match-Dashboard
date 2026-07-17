@@ -4,6 +4,7 @@ import {
   CAMP_BATTLE_SYNC_MAX_PAGES,
   fetchMoreBattleListPages,
   getBattleDetail,
+  getMoreBattleList,
   getProfile,
   getSeasonpage,
 } from "./camp-api";
@@ -368,7 +369,11 @@ export async function enrichMatchesWithBattleDetail(
         await options.onEnriched(match, { fetched, target });
       }
     } catch (err) {
-      if (err instanceof CampApiError && (err.code === "auth" || err.code === "rate_limit")) {
+      if (
+        err instanceof CampApiError &&
+        (err.code === "auth" || err.code === "rate_limit" || err.code === "hidden")
+      ) {
+        // 登录失效 / 频控 / 未开放查询：停止继续拉详情
         throw err;
       }
       // 单场详情失败不阻断整次同步
@@ -600,6 +605,19 @@ async function mapBattleRow(
 }
 
 export class CampWzryApiClient implements WzryApiClient {
+  /** 拉一页战绩列表；-10107 等会映射为 hidden，表示未开放查询 */
+  async assertBattleQueryAllowed(campId: string): Promise<void> {
+    const userId = campId.includes(":") ? campId.split(":")[0] : campId.trim();
+    if (!/^\d{5,15}$/.test(userId)) {
+      throw new WzryApiError("营地 ID 无效", "invalid_id");
+    }
+    try {
+      await getMoreBattleList(userId, { lastTime: 0 });
+    } catch (err) {
+      mapCampError(err);
+    }
+  }
+
   async searchByNickname(nickname: string): Promise<PlayerSearchHit[]> {
     const id = nickname.trim();
     if (!/^\d{5,15}$/.test(id)) {
