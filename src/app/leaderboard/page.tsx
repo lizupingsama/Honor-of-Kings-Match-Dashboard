@@ -8,6 +8,7 @@ import { ScoreTrendChart, type TrendPoint } from "@/components/score-trend-chart
 import { RankChart } from "@/components/rank-chart";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { withBasePath } from "@/lib/base-path";
+import { fmtK } from "@/lib/format";
 
 type BoardType =
   | "score"
@@ -54,12 +55,6 @@ type Row = {
   composite?: number;
   area?: string;
 };
-
-/** 输出/承伤等大数值按 k 展示，如 15234 → 15.2k */
-function fmtK(n: number) {
-  const k = Math.round((n / 1000) * 10) / 10;
-  return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
-}
 
 export default function LeaderboardPage() {
   const [type, setType] = useState<BoardType>("rank");

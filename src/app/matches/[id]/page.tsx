@@ -6,6 +6,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { formatRankLabel } from "@/lib/rank";
 import { withBasePath } from "@/lib/base-path";
+import { fmtK } from "@/lib/format";
 
 type MatchEquip = {
   equipId: number;
@@ -83,7 +84,7 @@ export default function MatchDetailPage() {
     [
       "输出",
       match.damage != null
-        ? `${match.damage.toLocaleString("zh-CN")}${
+        ? `${fmtK(match.damage)}${
             match.damagePct != null ? ` (${match.damagePct}%)` : ""
           }`
         : "—",
@@ -91,7 +92,7 @@ export default function MatchDetailPage() {
     [
       "承伤",
       match.takenDamage != null
-        ? `${match.takenDamage.toLocaleString("zh-CN")}${
+        ? `${fmtK(match.takenDamage)}${
             match.takenDamagePct != null ? ` (${match.takenDamagePct}%)` : ""
           }`
         : "—",

@@ -171,10 +171,10 @@ type BattleDetailExtras = {
   equips?: MatchEquip[];
   economy?: number;
   economyPct?: number;
-  /** 总输出（totalHurtCnt） */
+  /** 对英雄输出（totalHeroHurtCnt） */
   damage?: number;
   damagePct?: number;
-  /** 承伤（totalBehurtCnt） */
+  /** 承伤英雄伤害（totalBeheroHurtCnt） */
   takenDamage?: number;
   takenDamagePct?: number;
   /** 参团率（0–100） */
@@ -241,14 +241,20 @@ export function extractExtrasFromBattleDetail(
   const stats = asRecord(role.battleStats);
   const basic = asRecord(role.basicInfo);
   const money = stats?.money != null ? Number(stats.money) : NaN;
+  // 对英雄输出优先；缺失时再回退总输出
   const totalHurt =
-    stats?.totalHurtCnt != null
-      ? Number(stats.totalHurtCnt)
-      : stats?.totalHeroHurtCnt != null
-        ? Number(stats.totalHeroHurtCnt)
+    stats?.totalHeroHurtCnt != null
+      ? Number(stats.totalHeroHurtCnt)
+      : stats?.totalHurtCnt != null
+        ? Number(stats.totalHurtCnt)
         : NaN;
+  // 承伤英雄伤害优先；缺失时再回退总承伤
   const totalBehurt =
-    stats?.totalBehurtCnt != null ? Number(stats.totalBehurtCnt) : NaN;
+    stats?.totalBeheroHurtCnt != null
+      ? Number(stats.totalBeheroHurtCnt)
+      : stats?.totalBehurtCnt != null
+        ? Number(stats.totalBehurtCnt)
+        : NaN;
   const fightPower = stats?.fightPower != null ? Number(stats.fightPower) : NaN;
 
   const myCamp = basic?.acntCamp;
@@ -260,8 +266,8 @@ export function extractExtrasFromBattleDetail(
     if (myCamp != null && b?.acntCamp !== myCamp) continue;
     const s = asRecord(r.battleStats);
     teamMoney += Number(s?.money ?? 0) || 0;
-    teamHurt += Number(s?.totalHurtCnt ?? s?.totalHeroHurtCnt ?? 0) || 0;
-    teamBehurt += Number(s?.totalBehurtCnt ?? 0) || 0;
+    teamHurt += Number(s?.totalHeroHurtCnt ?? s?.totalHurtCnt ?? 0) || 0;
+    teamBehurt += Number(s?.totalBeheroHurtCnt ?? s?.totalBehurtCnt ?? 0) || 0;
   }
 
   // 优先用队伍汇总 money（与营地展示一致）

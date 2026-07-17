@@ -38,10 +38,11 @@ export type NormalizedMatch = {
   economy?: number;
   /** 经济占本队比例（0–100） */
   economyPct?: number;
+  /** 对英雄输出（营地 totalHeroHurtCnt） */
   damage?: number;
   /** 输出占本队比例（0–100） */
   damagePct?: number;
-  /** 承伤（totalBehurtCnt） */
+  /** 承伤英雄伤害（营地 totalBeheroHurtCnt） */
   takenDamage?: number;
   /** 承伤占本队比例（0–100） */
   takenDamagePct?: number;

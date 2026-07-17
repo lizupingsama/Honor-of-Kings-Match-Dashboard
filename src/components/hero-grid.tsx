@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtK } from "@/lib/format";
+
 export type HeroRow = {
   heroName: string;
   heroIcon?: string | null;
@@ -49,9 +51,9 @@ export function HeroGrid({
           h.avgEconomyPerMin != null
             ? ["分均经济", String(h.avgEconomyPerMin)]
             : null,
-          h.avgDamage != null ? ["场均输出", fmtInt(h.avgDamage)] : null,
+          h.avgDamage != null ? ["场均输出", fmtK(h.avgDamage)] : null,
           h.avgTakenDamage != null
-            ? ["场均承伤", fmtInt(h.avgTakenDamage)]
+            ? ["场均承伤", fmtK(h.avgTakenDamage)]
             : null,
           h.avgJoinPct != null ? ["场均参团", `${h.avgJoinPct}%`] : null,
         ].filter(Boolean) as [string, string][];

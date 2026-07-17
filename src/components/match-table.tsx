@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
+import { fmtK } from "@/lib/format";
 
 export type MatchEquipRow = {
   equipId: number;
@@ -42,9 +43,13 @@ export type MatchRow = {
   equips?: MatchEquipRow[] | null;
 };
 
-function formatStatWithPct(value?: number | null, pct?: number | null) {
+function formatStatWithPct(
+  value?: number | null,
+  pct?: number | null,
+  formatValue: (n: number) => string = (n) => n.toLocaleString("zh-CN"),
+) {
   if (value == null) return null;
-  const base = value.toLocaleString("zh-CN");
+  const base = formatValue(value);
   if (pct == null) return base;
   return `${base} (${pct}%)`;
 }
@@ -189,11 +194,11 @@ export function MatchTable({ matches }: { matches: MatchRow[] }) {
                           <span>经济 {formatStatWithPct(m.economy, m.economyPct)}</span>
                         ) : null}
                         {m.damage != null ? (
-                          <span>输出 {formatStatWithPct(m.damage, m.damagePct)}</span>
+                          <span>输出 {formatStatWithPct(m.damage, m.damagePct, fmtK)}</span>
                         ) : null}
                         {m.takenDamage != null ? (
                           <span>
-                            承伤 {formatStatWithPct(m.takenDamage, m.takenDamagePct)}
+                            承伤 {formatStatWithPct(m.takenDamage, m.takenDamagePct, fmtK)}
                           </span>
                         ) : null}
                         {m.joinPct != null ? <span>参团 {m.joinPct}%</span> : null}
