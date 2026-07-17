@@ -49,6 +49,7 @@ type DashData = {
     medalIcon?: string | null;
     mvp?: boolean;
     mvpType?: string | null;
+    mvpIcon?: string | null;
     gold?: boolean;
     economy?: number | null;
     economyPct?: number | null;

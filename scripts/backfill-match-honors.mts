@@ -24,6 +24,7 @@ async function main() {
           medal: honors.medal || null,
           medalIcon: honors.medalIcon || null,
           mvpType: honors.mvpType || null,
+          mvpIcon: honors.mvpIcon || null,
           evaluate: honors.evaluate || null,
         },
       });

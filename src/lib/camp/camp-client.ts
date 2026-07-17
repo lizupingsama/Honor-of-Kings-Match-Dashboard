@@ -409,6 +409,9 @@ export function parseBattleHonors(row: Record<string, unknown>) {
     mvpType = "mvp";
   }
 
+  const mvpIcon =
+    String(row.mvpUrlV3 || row.mvpUrlV2 || "").trim() || undefined;
+
   /** evaluateUrlV3 官方分路奖牌图（比 silver_/gold_ 文件名更准，可区分铜/银） */
   const EVALUATE_V3_MEDALS: Record<string, string> = {
     "116bb42c52b7d83b9d80ac9dd9580607": "银牌对抗路",
@@ -470,6 +473,7 @@ export function parseBattleHonors(row: Record<string, unknown>) {
     evaluate,
     mvp: Boolean(mvpType),
     mvpType,
+    mvpIcon,
     gold,
     medal,
     medalIcon,
@@ -598,6 +602,7 @@ async function mapBattleRow(
     medal: honors.medal,
     medalIcon: honors.medalIcon,
     mvpType: honors.mvpType,
+    mvpIcon: honors.mvpIcon,
     side,
     economy: row.economy != null ? Number(row.economy) : undefined,
     damage:

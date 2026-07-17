@@ -33,6 +33,8 @@ export type NormalizedMatch = {
   medalIcon?: string;
   /** mvp | svp */
   mvpType?: "mvp" | "svp";
+  /** 官方 MVP/SVP 图标 URL（mvpUrlV3 / mvpUrlV2） */
+  mvpIcon?: string;
   /** 阵营：blue | red */
   side?: "blue" | "red";
   economy?: number;

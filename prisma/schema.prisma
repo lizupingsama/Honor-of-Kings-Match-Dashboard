@@ -145,6 +145,8 @@ model Match {
   medalIcon   String?
   /// mvp | svp
   mvpType     String?
+  /// 官方 MVP/SVP 图标 URL（mvpUrlV3 / mvpUrlV2）
+  mvpIcon     String?
   /// 阵营：blue | red（来自营地 AcntCamp）
   side        String?
   economy     Int?

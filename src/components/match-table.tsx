@@ -27,6 +27,7 @@ export type MatchRow = {
   medalIcon?: string | null;
   mvp?: boolean;
   mvpType?: string | null;
+  mvpIcon?: string | null;
   gold?: boolean;
   rankName?: string | null;
   stars?: number | null;
@@ -118,7 +119,8 @@ function medalChipClass(medal: string) {
 function HonorBadges({ m }: { m: MatchRow }) {
   const mvpLabel =
     m.mvpType === "svp" ? "SVP" : m.mvpType === "mvp" || m.mvp ? "MVP" : null;
-  if (!m.medal && !m.medalIcon && !mvpLabel && !m.evaluate) return null;
+  if (!m.medal && !m.medalIcon && !mvpLabel && !m.mvpIcon && !m.evaluate)
+    return null;
 
   return (
     <div className="flex flex-wrap items-center gap-1">
@@ -133,7 +135,17 @@ function HonorBadges({ m }: { m: MatchRow }) {
       ) : m.medal ? (
         <span className={`chip ${medalChipClass(m.medal)}`}>{m.medal}</span>
       ) : null}
-      {mvpLabel ? <span className="chip chip-mvp">{mvpLabel}</span> : null}
+      {m.mvpIcon ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={m.mvpIcon}
+          alt={mvpLabel || "MVP"}
+          title={mvpLabel || undefined}
+          className="h-4 w-auto object-contain"
+        />
+      ) : mvpLabel ? (
+        <span className="chip chip-mvp">{mvpLabel}</span>
+      ) : null}
       {m.evaluate ? (
         <span className="text-xs text-[var(--muted)]">{m.evaluate}</span>
       ) : null}

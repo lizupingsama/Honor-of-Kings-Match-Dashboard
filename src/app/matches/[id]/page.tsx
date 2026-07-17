@@ -30,7 +30,11 @@ export default function MatchDetailPage() {
     rankName?: string | null;
     stars?: number | null;
     mvp: boolean;
+    mvpType?: string | null;
+    mvpIcon?: string | null;
     gold: boolean;
+    medal?: string | null;
+    medalIcon?: string | null;
     economy: number | null;
     economyPct?: number | null;
     damage: number | null;
@@ -113,9 +117,33 @@ export default function MatchDetailPage() {
       </Link>
       <div className="panel p-6">
         <h1 className="text-xl text-[var(--gold-bright)]">对局详情</h1>
-        <div className="mt-2 flex gap-2">
-          {match.mvp && <span className="chip chip-win">MVP</span>}
-          {match.gold && <span className="chip">金牌</span>}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {match.medalIcon ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={match.medalIcon}
+              alt={match.medal || "奖牌"}
+              title={match.medal || undefined}
+              className="h-5 w-auto object-contain"
+            />
+          ) : match.medal ? (
+            <span className="chip">{match.medal}</span>
+          ) : match.gold ? (
+            <span className="chip">金牌</span>
+          ) : null}
+          {match.mvpIcon ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={match.mvpIcon}
+              alt={match.mvpType === "svp" ? "SVP" : "MVP"}
+              title={match.mvpType === "svp" ? "SVP" : "MVP"}
+              className="h-5 w-auto object-contain"
+            />
+          ) : match.mvp ? (
+            <span className="chip chip-win">
+              {match.mvpType === "svp" ? "SVP" : "MVP"}
+            </span>
+          ) : null}
         </div>
         <dl className="mt-6 space-y-3">
           {rows.map(([k, v]) => (
