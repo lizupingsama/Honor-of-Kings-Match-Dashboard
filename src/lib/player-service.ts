@@ -628,7 +628,7 @@ export async function startPlayerSync(pending: PendingPlayerSync) {
             externalId: row.externalId,
             playedAt: row.playedAt,
             mode: row.mode as NormalizedMatch["mode"],
-            modeName: row.modeName,
+            modeName: row.modeName ?? "未知模式",
             heroName: row.heroName,
             result: row.result as NormalizedMatch["result"],
             kills: row.kills,
