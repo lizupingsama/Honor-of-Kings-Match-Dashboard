@@ -719,6 +719,9 @@ export class CampWzryApiClient implements WzryApiClient {
       const matches = await Promise.all(
         battles.map((row, idx) => mapBattleRow(row, userId, idx)),
       );
+      const latestPeakScore = matches
+        .filter((m) => m.mode === "peak" && m.peakScore != null && m.peakScore > 0)
+        .sort((a, b) => b.playedAt.getTime() - a.playedAt.getTime())[0]?.peakScore;
 
       if (enrichDetails && roleId) {
         await enrichMatchesWithBattleDetail(matches, roleId);
@@ -743,7 +746,7 @@ export class CampWzryApiClient implements WzryApiClient {
             (incremental ? undefined : matches.filter((m) => m.result === "win").length),
           rankScore: seasonStats?.rankScore,
           peakRating: seasonStats?.peakRating,
-          peakScore: seasonStats?.peakScore,
+          peakScore: latestPeakScore ?? 1200,
           mvpCount,
           goldCount,
           area: parseArea(areaText),

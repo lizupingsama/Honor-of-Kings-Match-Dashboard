@@ -319,7 +319,7 @@ async function persistFetchResult(
       ? (seasonWins / seasonGames) * 100
       : null;
 
-  const updated = await prisma.player.update({
+  let updated = await prisma.player.update({
     where: { id: playerId },
     data: {
       gameNickname: nickname,
@@ -347,19 +347,6 @@ async function persistFetchResult(
       lastSyncError: null,
       queryCount: { increment: 1 },
     },
-  });
-
-  await recordScoreSnapshot(playerId, {
-    rankScore: updated.rankScore || null,
-    peakRating: updated.peakRating || null,
-    peakScore: updated.peakScore || null,
-    winRate:
-      winRate != null
-        ? winRate
-        : updated.seasonGames
-          ? (updated.seasonWins / updated.seasonGames) * 100
-          : 0,
-    source: "sync",
   });
 
   let pulled = 0;
@@ -453,6 +440,35 @@ async function persistFetchResult(
     });
     pulled++;
   }
+
+  const latestPeakMatch = await prisma.match.findFirst({
+    where: { playerId, mode: "peak", peakScore: { not: null } },
+    orderBy: { playedAt: "desc" },
+    select: { peakScore: true },
+  });
+  const currentPeakScore =
+    latestPeakMatch?.peakScore != null && latestPeakMatch.peakScore > 0
+      ? latestPeakMatch.peakScore
+      : (result.profile.peakScore ?? 1200);
+  if (updated.peakScore !== currentPeakScore) {
+    updated = await prisma.player.update({
+      where: { id: playerId },
+      data: { peakScore: currentPeakScore },
+    });
+  }
+
+  await recordScoreSnapshot(playerId, {
+    rankScore: updated.rankScore || null,
+    peakRating: updated.peakRating || null,
+    peakScore: updated.peakScore || null,
+    winRate:
+      winRate != null
+        ? winRate
+        : updated.seasonGames
+          ? (updated.seasonWins / updated.seasonGames) * 100
+          : 0,
+    source: "sync",
+  });
 
   await trimMatchesToLatest(playerId, CAMP_BATTLE_SYNC_MAX_MATCHES);
   await recomputeRankDeltas(playerId);
