@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { z } from "zod";
-import { lookupPlayerByCampId, startPlayerSync } from "@/lib/player-service";
+import { getPlayerDashboard, lookupPlayerByCampId, startPlayerSync } from "@/lib/player-service";
 import { handleRouteError, jsonOk } from "@/lib/api";
 
 const schema = z.object({
@@ -20,6 +20,12 @@ export async function POST(req: Request) {
     });
 
     if (pendingSync) {
+      if (body.forceRefresh) {
+        await startPlayerSync(pendingSync);
+        const refreshed = await getPlayerDashboard(pendingSync.nickname);
+        return jsonOk(refreshed || data);
+      }
+
       after(async () => {
         try {
           await startPlayerSync(pendingSync);

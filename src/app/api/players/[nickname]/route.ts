@@ -1,4 +1,3 @@
-import { after } from "next/server";
 import {
   getPlayerDashboard,
   lookupPlayerByNickname,
@@ -30,13 +29,9 @@ export async function GET(
         forceRefresh: true,
       });
       if (pendingSync) {
-        after(async () => {
-          try {
-            await startPlayerSync(pendingSync);
-          } catch {
-            // 错误已落库
-          }
-        });
+        await startPlayerSync(pendingSync);
+        const refreshed = await getPlayerDashboard(pendingSync.nickname, filters);
+        return jsonOk(refreshed || data);
       }
       return jsonOk(data);
     }

@@ -116,9 +116,11 @@ function parseSeasonStats(seasonPayload: Record<string, unknown>) {
   const seasonWins = Number(rankInfo?.totalWinCnt ?? 0);
   const rankAvg = Number(rankInfo?.averageScore);
   const peakAvg = Number(masterInfo?.averageScore);
-  const masterScore = Number(
-    headCard?.masterScore ?? masterInfo?.masterScore ?? NaN,
-  );
+  const masterScoreRaw = Number(masterInfo?.masterScore);
+  const masterScore =
+    Number.isFinite(masterScoreRaw) && masterScoreRaw > 0
+      ? masterScoreRaw
+      : 1200;
 
   const hasSeasonGames = Number.isFinite(seasonGames) && seasonGames > 0;
   const hasRatings =
@@ -559,10 +561,7 @@ async function mapBattleRow(
   const peakScore =
     Number.isFinite(newPeak) && newPeak > 0
       ? newPeak
-      : (() => {
-          const fallback = row.peakScore != null ? Number(row.peakScore) : NaN;
-          return Number.isFinite(fallback) && fallback > 0 ? fallback : undefined;
-        })();
+      : undefined;
   const peakDelta =
     Number.isFinite(newPeak) && Number.isFinite(oldPeak)
       ? newPeak - oldPeak

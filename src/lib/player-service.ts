@@ -363,17 +363,9 @@ async function persistFetchResult(
   });
 
   let pulled = 0;
-  let latestPeakScore: number | null = null;
-  let latestPeakAt = 0;
-
   for (const m of result.matches) {
     const mRankScore =
       m.rankName != null ? parseRankScore(m.rankName, m.stars ?? 0) : null;
-
-    if (m.peakScore != null && m.peakScore > 0 && m.playedAt.getTime() >= latestPeakAt) {
-      latestPeakScore = m.peakScore;
-      latestPeakAt = m.playedAt.getTime();
-    }
 
     await prisma.match.upsert({
       where: {
@@ -401,8 +393,8 @@ async function persistFetchResult(
         rankName: m.rankName,
         stars: m.stars,
         rankScore: mRankScore ?? undefined,
-        peakScore: m.peakScore,
-        peakDelta: m.peakDelta,
+        peakScore: m.peakScore ?? null,
+        peakDelta: m.peakDelta ?? null,
         mvp: m.mvp ?? false,
         gold: m.gold ?? false,
         medal: m.medal,
@@ -438,8 +430,8 @@ async function persistFetchResult(
         rankName: m.rankName,
         stars: m.stars,
         rankScore: mRankScore ?? undefined,
-        peakScore: m.peakScore,
-        peakDelta: m.peakDelta,
+        peakScore: m.peakScore ?? null,
+        peakDelta: m.peakDelta ?? null,
         mvp: m.mvp ?? false,
         gold: m.gold ?? false,
         medal: m.medal,
@@ -460,13 +452,6 @@ async function persistFetchResult(
       },
     });
     pulled++;
-  }
-
-  if (latestPeakScore != null) {
-    await prisma.player.update({
-      where: { id: playerId },
-      data: { peakScore: latestPeakScore },
-    });
   }
 
   await trimMatchesToLatest(playerId, CAMP_BATTLE_SYNC_MAX_MATCHES);
