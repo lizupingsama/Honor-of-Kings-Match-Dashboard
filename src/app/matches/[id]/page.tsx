@@ -7,6 +7,12 @@ import { format } from "date-fns";
 import { formatRankLabel } from "@/lib/rank";
 import { withBasePath } from "@/lib/base-path";
 
+type MatchEquip = {
+  equipId: number;
+  equipIcon: string;
+  equipName: string;
+};
+
 export default function MatchDetailPage() {
   const params = useParams<{ id: string }>();
   const [match, setMatch] = useState<{
@@ -25,7 +31,13 @@ export default function MatchDetailPage() {
     mvp: boolean;
     gold: boolean;
     economy: number | null;
+    economyPct?: number | null;
     damage: number | null;
+    damagePct?: number | null;
+    takenDamage?: number | null;
+    takenDamagePct?: number | null;
+    joinPct?: number | null;
+    equips?: MatchEquip[];
     player: { gameNickname: string };
   } | null>(null);
   const [error, setError] = useState("");
@@ -60,10 +72,35 @@ export default function MatchDetailPage() {
         : "-",
     ],
     ["段位", match.rankName ? formatRankLabel(match.rankName, match.stars ?? 0) : "-"],
-    ["经济", match.economy != null ? String(match.economy) : "—"],
-    ["伤害", match.damage != null ? String(match.damage) : "—"],
+    [
+      "经济",
+      match.economy != null
+        ? `${match.economy.toLocaleString("zh-CN")}${
+            match.economyPct != null ? ` (${match.economyPct}%)` : ""
+          }`
+        : "—",
+    ],
+    [
+      "输出",
+      match.damage != null
+        ? `${match.damage.toLocaleString("zh-CN")}${
+            match.damagePct != null ? ` (${match.damagePct}%)` : ""
+          }`
+        : "—",
+    ],
+    [
+      "承伤",
+      match.takenDamage != null
+        ? `${match.takenDamage.toLocaleString("zh-CN")}${
+            match.takenDamagePct != null ? ` (${match.takenDamagePct}%)` : ""
+          }`
+        : "—",
+    ],
+    ["参团", match.joinPct != null ? `${match.joinPct}%` : "—"],
     ["时间", format(new Date(match.playedAt), "yyyy-MM-dd HH:mm")],
   ];
+
+  const equips = match.equips || [];
 
   return (
     <div className="mx-auto max-w-lg space-y-4 fade-in">
@@ -90,6 +127,39 @@ export default function MatchDetailPage() {
             </div>
           ))}
         </dl>
+
+        <div className="mt-6 border-t border-white/5 pt-4">
+          <div className="text-sm text-[var(--muted)]">出装</div>
+          {equips.length ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {equips.map((eq) => (
+                <div
+                  key={`${eq.equipId}-${eq.equipName}`}
+                  className="flex w-[4.5rem] flex-col items-center gap-1"
+                  title={eq.equipName}
+                >
+                  {eq.equipIcon ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={eq.equipIcon}
+                      alt={eq.equipName}
+                      className="h-10 w-10 rounded-lg border border-[var(--line)] bg-black/30 object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--line)] bg-black/30 text-[10px] text-[var(--muted)]">
+                      ?
+                    </div>
+                  )}
+                  <span className="line-clamp-2 text-center text-[10px] leading-tight text-[var(--muted)]">
+                    {eq.equipName}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 text-sm text-[var(--muted)]">暂无出装（重新同步后可获取）</div>
+          )}
+        </div>
       </div>
     </div>
   );

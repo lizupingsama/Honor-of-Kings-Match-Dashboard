@@ -13,6 +13,7 @@ export function OverviewBar({
     currentRank?: string | null;
     currentStars?: number;
     rankScore?: number;
+    peakRating?: number;
     peakScore?: number;
     seasonGames?: number;
     seasonWins?: number;
@@ -33,6 +34,11 @@ export function OverviewBar({
     {
       label: "排位评分",
       value: data.rankScore != null && data.rankScore > 0 ? String(data.rankScore) : "—",
+    },
+    {
+      label: "巅峰评分",
+      value:
+        data.peakRating != null && data.peakRating > 0 ? String(data.peakRating) : "—",
     },
     {
       label: "巅峰分",

@@ -1,4 +1,9 @@
-import { getPlayerDashboard, lookupPlayerByNickname } from "@/lib/player-service";
+import { after } from "next/server";
+import {
+  getPlayerDashboard,
+  lookupPlayerByNickname,
+  startPlayerSync,
+} from "@/lib/player-service";
 import { handleRouteError, jsonError, jsonOk } from "@/lib/api";
 
 export async function GET(
@@ -11,35 +16,32 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const refresh = searchParams.get("refresh") === "1";
 
-    if (refresh) {
-      const data = await lookupPlayerByNickname(nickname, { forceRefresh: true });
-      return jsonOk(data);
-    }
-
-    let data = await getPlayerDashboard(nickname, {
+    const filters = {
       range: searchParams.get("range") || "30",
       mode: searchParams.get("mode") || "all",
       result: searchParams.get("result") || "all",
       side: searchParams.get("side") || "all",
       hero: searchParams.get("hero") || "",
       page: Number(searchParams.get("page") || "1"),
-    });
+    };
 
-    // 本地没有则自动拉取
-    if (!data) {
-      data = await lookupPlayerByNickname(nickname);
-    } else {
-      // 重新按筛选条件取（lookup 返回默认筛选，这里已有本地数据则用筛选）
-      data = await getPlayerDashboard(nickname, {
-        range: searchParams.get("range") || "30",
-        mode: searchParams.get("mode") || "all",
-        result: searchParams.get("result") || "all",
-        side: searchParams.get("side") || "all",
-        hero: searchParams.get("hero") || "",
-        page: Number(searchParams.get("page") || "1"),
+    if (refresh) {
+      const { data, pendingSync } = await lookupPlayerByNickname(nickname, {
+        forceRefresh: true,
       });
+      if (pendingSync) {
+        after(async () => {
+          try {
+            await startPlayerSync(pendingSync);
+          } catch {
+            // 错误已落库
+          }
+        });
+      }
+      return jsonOk(data);
     }
 
+    const data = await getPlayerDashboard(nickname, filters);
     if (!data) return jsonError("未找到该玩家", 404);
     return jsonOk(data);
   } catch (err) {

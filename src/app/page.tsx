@@ -78,7 +78,7 @@ export default function HomePage() {
                 autoFocus
               />
               <button className="btn btn-primary sm:min-w-28" disabled={loading}>
-                {loading ? "查询中…" : "查询战绩"}
+                {loading ? "跳转中…" : "查询战绩"}
               </button>
             </div>
             {error && <p className="text-sm text-[var(--crimson)]">{error}</p>}

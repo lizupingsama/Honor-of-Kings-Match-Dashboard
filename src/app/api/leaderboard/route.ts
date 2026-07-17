@@ -7,12 +7,14 @@ import {
   getWinRateLeaderboard,
   getAvgScoreLeaderboard,
   getKdaLeaderboard,
+  getContributionLeaderboard,
   getHeroLeaderboard,
   getActiveLeaderboard,
   getMinGames,
   type HeroSortBy,
   type WinRateSortBy,
   type KdaSortBy,
+  type ContributionSortBy,
 } from "@/lib/leaderboard";
 import {
   getPlayerScoreSeries,
@@ -104,6 +106,25 @@ export async function GET(req: Request) {
       const rows = await getKdaLeaderboard({ area, limit, offset, sortBy });
       return jsonOk({ type, rows, minGames: getMinGames(), sortBy });
     }
+    if (type === "contribution") {
+      const sortRaw = searchParams.get("sortBy") || "damage";
+      const allowed: ContributionSortBy[] = [
+        "damage",
+        "taken",
+        "join",
+        "economy",
+      ];
+      const sortBy = (allowed.includes(sortRaw as ContributionSortBy)
+        ? sortRaw
+        : "damage") as ContributionSortBy;
+      const rows = await getContributionLeaderboard({
+        area,
+        limit,
+        offset,
+        sortBy,
+      });
+      return jsonOk({ type, rows, minGames: getMinGames(), sortBy });
+    }
     if (type === "hero") {
       if (!heroName) return jsonError("请指定英雄名称", 400);
       const sortRaw = searchParams.get("sortBy") || "composite";
@@ -140,6 +161,25 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     if (body?.action === "heroes") {
+      // 战力榜：只返回本地已有战力的英雄，按最高战力排序
+      if (body?.forPower) {
+        const heroes = await prisma.heroStat.groupBy({
+          by: ["heroName"],
+          where: { combatPower: { gt: 0 } },
+          _max: { combatPower: true },
+          _count: { _all: true },
+          orderBy: { _max: { combatPower: "desc" } },
+          take: 80,
+        });
+        return jsonOk({
+          heroes: heroes.map((h) => ({
+            name: h.heroName,
+            combatPower: h._max.combatPower || 0,
+            players: h._count._all,
+          })),
+        });
+      }
+
       const heroes = await prisma.heroStat.groupBy({
         by: ["heroName"],
         _sum: { games: true },

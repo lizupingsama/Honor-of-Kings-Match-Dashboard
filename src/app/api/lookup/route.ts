@@ -1,5 +1,6 @@
+import { after } from "next/server";
 import { z } from "zod";
-import { lookupPlayerByCampId } from "@/lib/player-service";
+import { lookupPlayerByCampId, startPlayerSync } from "@/lib/player-service";
 import { handleRouteError, jsonOk } from "@/lib/api";
 
 const schema = z.object({
@@ -10,13 +11,24 @@ const schema = z.object({
   forceRefresh: z.boolean().optional(),
 });
 
-/** POST: 按营地 ID 查询并同步 */
+/** POST: 按营地 ID 查询；需要同步时后台继续拉战绩，立即返回看板壳 */
 export async function POST(req: Request) {
   try {
     const body = schema.parse(await req.json());
-    const data = await lookupPlayerByCampId(body.campId, {
+    const { data, pendingSync } = await lookupPlayerByCampId(body.campId, {
       forceRefresh: body.forceRefresh,
     });
+
+    if (pendingSync) {
+      after(async () => {
+        try {
+          await startPlayerSync(pendingSync);
+        } catch {
+          // 错误已写入 SyncJob / lastSyncError，前端轮询可见
+        }
+      });
+    }
+
     return jsonOk(data);
   } catch (err) {
     return handleRouteError(err);

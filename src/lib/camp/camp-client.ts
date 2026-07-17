@@ -3,6 +3,7 @@ import {
   CAMP_BATTLE_SYNC_MAX_MATCHES,
   CAMP_BATTLE_SYNC_MAX_PAGES,
   fetchMoreBattleListPages,
+  getBattleDetail,
   getProfile,
   getSeasonpage,
 } from "./camp-api";
@@ -10,11 +11,16 @@ import { resolveHeroName, stripControlChars } from "./hero-list";
 import {
   detectMode,
   type FetchResult,
+  type MatchEquip,
   type NormalizedMatch,
   type PlayerSearchHit,
   type WzryApiClient,
   WzryApiError,
 } from "../wzry-api";
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function mapCampError(err: unknown): never {
   if (err instanceof CampApiError) {
@@ -101,17 +107,273 @@ function parseSeasonStats(seasonPayload: Record<string, unknown>) {
   const history = asList(data.historyList);
   const current = history[0] || null;
   const rankInfo = asRecord(current?.rankInfo);
-  if (!rankInfo) return null;
+  const masterInfo = asRecord(current?.masterInfo);
+  const headCard = asRecord(data.headCard);
+  if (!rankInfo && !masterInfo && !headCard) return null;
 
-  const seasonGames = Number(rankInfo.totalCnt ?? 0);
-  const seasonWins = Number(rankInfo.totalWinCnt ?? 0);
-  if (!Number.isFinite(seasonGames) || seasonGames <= 0) return null;
+  const seasonGames = Number(rankInfo?.totalCnt ?? 0);
+  const seasonWins = Number(rankInfo?.totalWinCnt ?? 0);
+  const rankAvg = Number(rankInfo?.averageScore);
+  const peakAvg = Number(masterInfo?.averageScore);
+  const masterScore = Number(
+    headCard?.masterScore ?? masterInfo?.masterScore ?? NaN,
+  );
+
+  const hasSeasonGames = Number.isFinite(seasonGames) && seasonGames > 0;
+  const hasRatings =
+    (Number.isFinite(rankAvg) && rankAvg > 0) ||
+    (Number.isFinite(peakAvg) && peakAvg > 0) ||
+    (Number.isFinite(masterScore) && masterScore > 0);
+  if (!hasSeasonGames && !hasRatings) return null;
 
   return {
-    seasonGames,
-    seasonWins: Number.isFinite(seasonWins) ? seasonWins : 0,
-    goldCount: Number(rankInfo.goldCnt ?? 0) || undefined,
+    seasonGames: hasSeasonGames ? seasonGames : undefined,
+    seasonWins: hasSeasonGames
+      ? Number.isFinite(seasonWins)
+        ? seasonWins
+        : 0
+      : undefined,
+    goldCount: Number(rankInfo?.goldCnt ?? 0) || undefined,
+    /** 营地「个人评分」：排位场均评分 */
+    rankScore:
+      Number.isFinite(rankAvg) && rankAvg > 0
+        ? Math.round(rankAvg)
+        : undefined,
+    /** 巅峰场均评分 */
+    peakRating:
+      Number.isFinite(peakAvg) && peakAvg > 0
+        ? Math.round(peakAvg)
+        : undefined,
+    peakScore:
+      Number.isFinite(masterScore) && masterScore > 0
+        ? Math.round(masterScore)
+        : undefined,
   };
+}
+
+function parseEquips(value: unknown): MatchEquip[] | undefined {
+  if (!Array.isArray(value) || !value.length) return undefined;
+  const equips: MatchEquip[] = [];
+  for (const item of value) {
+    const row = asRecord(item);
+    if (!row) continue;
+    const equipId = Number(row.equipId);
+    const equipIcon = String(row.equipIcon || "");
+    const equipName = String(row.equipName || "");
+    if (!Number.isFinite(equipId) || !equipName) continue;
+    equips.push({ equipId, equipIcon, equipName });
+  }
+  return equips.length ? equips : undefined;
+}
+
+type BattleDetailExtras = {
+  equips?: MatchEquip[];
+  economy?: number;
+  economyPct?: number;
+  /** 总输出（totalHurtCnt） */
+  damage?: number;
+  damagePct?: number;
+  /** 承伤（totalBehurtCnt） */
+  takenDamage?: number;
+  takenDamagePct?: number;
+  /** 参团率（0–100） */
+  joinPct?: number;
+  /** 英雄战力（fightPower） */
+  combatPower?: number;
+};
+
+function roundPct(part: number, total: number): number | undefined {
+  if (!(total > 0) || !Number.isFinite(part)) return undefined;
+  return Math.round((part / total) * 1000) / 10;
+}
+
+/** joinGamePercent 常见为 0–1 小数，偶发已是 0–100 */
+function parseJoinPct(raw: unknown): number | undefined {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  const pct = n <= 1 ? n * 100 : n;
+  return Math.round(pct * 10) / 10;
+}
+
+function findTargetRoleInDetail(
+  detailPayload: Record<string, unknown>,
+  targetRoleId: string,
+): { role: Record<string, unknown>; roles: Record<string, unknown>[] } | null {
+  const data = asRecord(detailPayload.data) || detailPayload;
+  const roles = [...asList(data.blueRoles), ...asList(data.redRoles)];
+  const wanted = String(targetRoleId || "");
+
+  if (wanted) {
+    for (const role of roles) {
+      const basic = asRecord(role.basicInfo);
+      if (basic && String(basic.roleId || "") === wanted) return { role, roles };
+    }
+  }
+
+  // 兜底：详情 head 对应当前查看角色时，用其英雄匹配
+  const head = asRecord(data.head);
+  const headHeroId = head?.heroId != null ? String(head.heroId) : "";
+  if (!headHeroId) return null;
+
+  for (const role of roles) {
+    const basic = asRecord(role.basicInfo);
+    const records = asRecord(role.battleRecords);
+    const usedHero = asRecord(records?.usedHero) || asRecord(basic?.usedHero);
+    const heroId = String(
+      records?.heroId ?? usedHero?.heroId ?? basic?.heroId ?? "",
+    );
+    if (heroId && heroId === headHeroId) return { role, roles };
+  }
+  return null;
+}
+
+/** 从对局详情中取出目标角色出装 / 经济 / 输出及本队占比 */
+export function extractExtrasFromBattleDetail(
+  detailPayload: Record<string, unknown>,
+  targetRoleId: string,
+): BattleDetailExtras {
+  const found = findTargetRoleInDetail(detailPayload, targetRoleId);
+  if (!found) return {};
+
+  const { role, roles } = found;
+  const records = asRecord(role.battleRecords);
+  const stats = asRecord(role.battleStats);
+  const basic = asRecord(role.basicInfo);
+  const money = stats?.money != null ? Number(stats.money) : NaN;
+  const totalHurt =
+    stats?.totalHurtCnt != null
+      ? Number(stats.totalHurtCnt)
+      : stats?.totalHeroHurtCnt != null
+        ? Number(stats.totalHeroHurtCnt)
+        : NaN;
+  const totalBehurt =
+    stats?.totalBehurtCnt != null ? Number(stats.totalBehurtCnt) : NaN;
+  const fightPower = stats?.fightPower != null ? Number(stats.fightPower) : NaN;
+
+  const myCamp = basic?.acntCamp;
+  let teamMoney = 0;
+  let teamHurt = 0;
+  let teamBehurt = 0;
+  for (const r of roles) {
+    const b = asRecord(r.basicInfo);
+    if (myCamp != null && b?.acntCamp !== myCamp) continue;
+    const s = asRecord(r.battleStats);
+    teamMoney += Number(s?.money ?? 0) || 0;
+    teamHurt += Number(s?.totalHurtCnt ?? s?.totalHeroHurtCnt ?? 0) || 0;
+    teamBehurt += Number(s?.totalBehurtCnt ?? 0) || 0;
+  }
+
+  // 优先用队伍汇总 money（与营地展示一致）
+  const data = asRecord(detailPayload.data) || detailPayload;
+  const campNum = myCamp != null ? Number(myCamp) : NaN;
+  const team =
+    campNum === 1
+      ? asRecord(data.blueTeam)
+      : campNum === 2
+        ? asRecord(data.redTeam)
+        : null;
+  const teamMoneyOfficial = team?.money != null ? Number(team.money) : NaN;
+  if (Number.isFinite(teamMoneyOfficial) && teamMoneyOfficial > 0) {
+    teamMoney = teamMoneyOfficial;
+  }
+
+  return {
+    equips: parseEquips(records?.finalEquips),
+    economy: Number.isFinite(money) ? money : undefined,
+    economyPct: Number.isFinite(money) ? roundPct(money, teamMoney) : undefined,
+    damage: Number.isFinite(totalHurt) ? totalHurt : undefined,
+    damagePct: Number.isFinite(totalHurt) ? roundPct(totalHurt, teamHurt) : undefined,
+    takenDamage: Number.isFinite(totalBehurt) ? totalBehurt : undefined,
+    takenDamagePct: Number.isFinite(totalBehurt)
+      ? roundPct(totalBehurt, teamBehurt)
+      : undefined,
+    joinPct: parseJoinPct(stats?.joinGamePercent),
+    combatPower:
+      Number.isFinite(fightPower) && fightPower > 0
+        ? Math.round(fightPower)
+        : undefined,
+  };
+}
+
+export type EnrichBattleDetailOptions = {
+  /** 每成功补全一场后回调（可用于立即写库） */
+  onEnriched?: (
+    match: NormalizedMatch,
+    progress: { fetched: number; target: number },
+  ) => void | Promise<void>;
+};
+
+/** 串行补全对局详情（出装 / 经济 / 伤害等），供后台第二阶段调用 */
+export async function enrichMatchesWithBattleDetail(
+  matches: NormalizedMatch[],
+  targetRoleId: string,
+  options?: EnrichBattleDetailOptions,
+) {
+  if (!matches.length || !targetRoleId) return;
+
+  const delayMs = Math.max(
+    0,
+    Number(process.env.CAMP_BATTLE_DETAIL_DELAY_MS || "250") || 250,
+  );
+  const maxDetails = Math.max(
+    0,
+    Number(process.env.CAMP_BATTLE_DETAIL_MAX || String(CAMP_BATTLE_SYNC_MAX_MATCHES)) ||
+      CAMP_BATTLE_SYNC_MAX_MATCHES,
+  );
+  const target = Math.min(matches.length, maxDetails);
+
+  let fetched = 0;
+  for (const match of matches) {
+    if (fetched >= maxDetails) break;
+    if (!match.rawJson) continue;
+
+    let row: Record<string, unknown>;
+    try {
+      row = JSON.parse(match.rawJson) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    const gameSeq = String(row.gameSeq || "");
+    const gameSvr = String(row.gameSvrId || row.gameSvr || "");
+    const relaySvr = String(row.relaySvrId || row.relaySvr || "");
+    const battleType = Number(row.battleType);
+    if (!gameSeq || !gameSvr || !relaySvr || !Number.isFinite(battleType)) continue;
+
+    if (fetched > 0 && delayMs > 0) await sleep(delayMs);
+
+    try {
+      const detail = await getBattleDetail({
+        gameSeq,
+        gameSvr,
+        relaySvr,
+        battleType,
+        targetRoleId,
+      });
+      const extras = extractExtrasFromBattleDetail(
+        detail as Record<string, unknown>,
+        targetRoleId,
+      );
+      if (extras.equips) match.equips = extras.equips;
+      if (extras.economy != null) match.economy = extras.economy;
+      if (extras.economyPct != null) match.economyPct = extras.economyPct;
+      if (extras.damage != null) match.damage = extras.damage;
+      if (extras.damagePct != null) match.damagePct = extras.damagePct;
+      if (extras.takenDamage != null) match.takenDamage = extras.takenDamage;
+      if (extras.takenDamagePct != null) match.takenDamagePct = extras.takenDamagePct;
+      if (extras.joinPct != null) match.joinPct = extras.joinPct;
+      if (extras.combatPower != null) match.combatPower = extras.combatPower;
+      fetched += 1;
+      if (options?.onEnriched) {
+        await options.onEnriched(match, { fetched, target });
+      }
+    } catch (err) {
+      if (err instanceof CampApiError && (err.code === "auth" || err.code === "rate_limit")) {
+        throw err;
+      }
+      // 单场详情失败不阻断整次同步
+    }
+  }
 }
 
 export function parseBattleHonors(row: Record<string, unknown>) {
@@ -378,6 +640,7 @@ export class CampWzryApiClient implements WzryApiClient {
       num?: number;
       nickname?: string;
       knownExternalIds?: string[];
+      enrichDetails?: boolean;
     },
   ): Promise<FetchResult> {
     const userId = campId.includes(":") ? campId.split(":")[0] : campId.trim();
@@ -389,6 +652,7 @@ export class CampWzryApiClient implements WzryApiClient {
       .map((id) => String(id || "").trim())
       .filter(Boolean);
     const incremental = knownIds.length > 0;
+    const enrichDetails = options?.enrichDetails !== false;
 
     try {
       const [profileRes, battlePages] = await Promise.all([
@@ -428,6 +692,10 @@ export class CampWzryApiClient implements WzryApiClient {
         battles.map((row, idx) => mapBattleRow(row, userId, idx)),
       );
 
+      if (enrichDetails && roleId) {
+        await enrichMatchesWithBattleDetail(matches, roleId);
+      }
+
       // 增量时若无赛季页，不覆盖本地 mvp/金牌/赛季统计
       const mvpCount = incremental ? undefined : matches.filter((m) => m.mvp).length;
       const goldCount = incremental
@@ -445,11 +713,15 @@ export class CampWzryApiClient implements WzryApiClient {
           seasonWins:
             seasonStats?.seasonWins ??
             (incremental ? undefined : matches.filter((m) => m.result === "win").length),
+          rankScore: seasonStats?.rankScore,
+          peakRating: seasonStats?.peakRating,
+          peakScore: seasonStats?.peakScore,
           mvpCount,
           goldCount,
           area: parseArea(areaText),
         },
         matches,
+        roleId: roleId || undefined,
       };
     } catch (err) {
       mapCampError(err);

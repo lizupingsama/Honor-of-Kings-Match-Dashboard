@@ -148,7 +148,21 @@ model Match {
   /// 阵营：blue | red（来自营地 AcntCamp）
   side        String?
   economy     Int?
+  /// 经济占本队比例（0–100，一位小数）
+  economyPct  Float?
   damage      Int?
+  /// 输出占本队比例（0–100，一位小数）
+  damagePct   Float?
+  /// 承伤（totalBehurtCnt）
+  takenDamage Int?
+  /// 承伤占本队比例（0–100，一位小数）
+  takenDamagePct Float?
+  /// 参团率（0–100，一位小数）
+  joinPct     Float?
+  /// 对局时该英雄战力（营地 fightPower）
+  combatPower Int?
+  /// 出装 JSON：[{equipId,equipIcon,equipName},...]
+  equipsJson  String?
   rawJson     String?
 
   createdAt DateTime @default(now())
@@ -174,6 +188,18 @@ model HeroStat {
   deaths      Int     @default(0)
   assists     Int     @default(0)
   totalScore  Float   @default(0)
+  /// 有评分的场次（算平均战绩用）
+  scoreGames  Int     @default(0)
+  /// 经济合计（仅含有经济数据的对局）
+  totalEconomy Int    @default(0)
+  /// 对应 totalEconomy 的对局时长合计（秒），用于分均经济
+  totalDurationSec Int @default(0)
+  totalDamage Int     @default(0)
+  damageGames Int     @default(0)
+  totalTakenDamage Int @default(0)
+  takenGames  Int     @default(0)
+  totalJoinPct Float  @default(0)
+  joinGames   Int     @default(0)
 
   updatedAt DateTime @updatedAt
 

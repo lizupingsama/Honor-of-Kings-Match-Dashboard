@@ -1,8 +1,37 @@
 import { prisma } from "./db";
-import { getWzryApiClient, WzryApiError } from "./wzry-api";
+import {
+  getWzryApiClient,
+  WzryApiError,
+  type FetchResult,
+  type NormalizedMatch,
+} from "./wzry-api";
 import { parseRankScore } from "./rank";
-import { recordScoreSnapshot } from "./score-history";
+import { clampRating } from "./rating";
+import { recordHeroPowerSnapshot, recordScoreSnapshot } from "./score-history";
 import { CAMP_BATTLE_SYNC_MAX_MATCHES } from "./camp/camp-api";
+import { enrichMatchesWithBattleDetail } from "./camp/camp-client";
+import { parseEquipsJson } from "./match-equips";
+
+export type SyncStatus = {
+  status: "idle" | "running" | "success" | "failed";
+  message?: string | null;
+  pulled?: number;
+};
+
+export type PendingPlayerSync = {
+  playerId: string;
+  campId: string;
+  nickname: string;
+  jobId: string;
+};
+
+export type LookupResult = {
+  data: NonNullable<Awaited<ReturnType<typeof getPlayerDashboard>>>;
+  pendingSync?: PendingPlayerSync;
+};
+
+/** 进程内防并发：同一玩家同时只跑一个同步任务 */
+const syncingPlayerIds = new Set<string>();
 
 const COOLDOWN = Number(process.env.SYNC_COOLDOWN_SECONDS || "300") || 300;
 const AUTO_SYNC_INTERVAL_SECONDS = Math.max(
@@ -48,67 +77,109 @@ export async function recomputeHeroStats(playerId: string) {
   const powerMap = new Map(existing.map((s) => [s.heroName, s.combatPower]));
 
   const matches = await prisma.match.findMany({ where: { playerId } });
-  const map = new Map<
-    string,
-    {
-      heroId?: string | null;
-      heroIcon?: string | null;
-      games: number;
-      wins: number;
-      kills: number;
-      deaths: number;
-      assists: number;
-      totalScore: number;
-    }
-  >();
-
-  for (const m of matches) {
-    const cur = map.get(m.heroName) || {
-      heroId: m.heroId,
-      heroIcon: m.heroIcon,
-      games: 0,
-      wins: 0,
-      kills: 0,
-      deaths: 0,
-      assists: 0,
-      totalScore: 0,
-    };
-    cur.games += 1;
-    if (m.result === "win") cur.wins += 1;
-    cur.kills += m.kills;
-    cur.deaths += m.deaths;
-    cur.assists += m.assists;
-    cur.totalScore += m.score ?? 0;
-    if (m.heroIcon) cur.heroIcon = m.heroIcon;
-    if (m.heroId) cur.heroId = m.heroId;
-    map.set(m.heroName, cur);
-  }
-
-  await prisma.heroStat.deleteMany({ where: { playerId } });
-  const rows: Array<{
-    playerId: string;
-    heroName: string;
-    heroId?: string;
-    heroIcon?: string;
-    combatPower: number;
+  type HeroAgg = {
+    heroId?: string | null;
+    heroIcon?: string | null;
     games: number;
     wins: number;
     kills: number;
     deaths: number;
     assists: number;
     totalScore: number;
-  }> = [...map.entries()].map(([heroName, s]) => ({
+    scoreGames: number;
+    totalEconomy: number;
+    totalDurationSec: number;
+    totalDamage: number;
+    damageGames: number;
+    totalTakenDamage: number;
+    takenGames: number;
+    totalJoinPct: number;
+    joinGames: number;
+  };
+  const emptyAgg = (): HeroAgg => ({
+    games: 0,
+    wins: 0,
+    kills: 0,
+    deaths: 0,
+    assists: 0,
+    totalScore: 0,
+    scoreGames: 0,
+    totalEconomy: 0,
+    totalDurationSec: 0,
+    totalDamage: 0,
+    damageGames: 0,
+    totalTakenDamage: 0,
+    takenGames: 0,
+    totalJoinPct: 0,
+    joinGames: 0,
+  });
+  const map = new Map<string, HeroAgg>();
+  /** 各英雄最近一场有战力数据的值 */
+  const latestPower = new Map<string, { power: number; at: number }>();
+
+  for (const m of matches) {
+    const cur = map.get(m.heroName) || emptyAgg();
+    cur.heroId = m.heroId ?? cur.heroId;
+    cur.heroIcon = m.heroIcon ?? cur.heroIcon;
+    cur.games += 1;
+    if (m.result === "win") cur.wins += 1;
+    cur.kills += m.kills;
+    cur.deaths += m.deaths;
+    cur.assists += m.assists;
+    if (m.score != null) {
+      cur.totalScore += m.score;
+      cur.scoreGames += 1;
+    }
+    if (m.economy != null && m.durationSec != null && m.durationSec > 0) {
+      cur.totalEconomy += m.economy;
+      cur.totalDurationSec += m.durationSec;
+    }
+    if (m.damage != null) {
+      cur.totalDamage += m.damage;
+      cur.damageGames += 1;
+    }
+    if (m.takenDamage != null) {
+      cur.totalTakenDamage += m.takenDamage;
+      cur.takenGames += 1;
+    }
+    if (m.joinPct != null) {
+      cur.totalJoinPct += m.joinPct;
+      cur.joinGames += 1;
+    }
+    if (m.combatPower != null && m.combatPower > 0) {
+      const prev = latestPower.get(m.heroName);
+      const at = m.playedAt.getTime();
+      if (!prev || at >= prev.at) {
+        latestPower.set(m.heroName, { power: m.combatPower, at });
+      }
+    }
+    if (m.heroIcon) cur.heroIcon = m.heroIcon;
+    if (m.heroId) cur.heroId = m.heroId;
+    map.set(m.heroName, cur);
+  }
+
+  await prisma.heroStat.deleteMany({ where: { playerId } });
+  const rows = [...map.entries()].map(([heroName, s]) => ({
     playerId,
     heroName,
     heroId: s.heroId || undefined,
     heroIcon: s.heroIcon || undefined,
-    combatPower: powerMap.get(heroName) ?? 0,
+    combatPower: latestPower.get(heroName)?.power ?? powerMap.get(heroName) ?? 0,
     games: s.games,
     wins: s.wins,
     kills: s.kills,
     deaths: s.deaths,
     assists: s.assists,
     totalScore: s.totalScore,
+    scoreGames: s.scoreGames,
+    totalEconomy: s.totalEconomy,
+    totalDurationSec: s.totalDurationSec,
+    totalDamage: s.totalDamage,
+    damageGames: s.damageGames,
+    totalTakenDamage: s.totalTakenDamage,
+    takenGames: s.takenGames,
+    totalJoinPct: s.totalJoinPct,
+    joinGames: s.joinGames,
   }));
 
   // 保留仅有战力、暂无对局的英雄
@@ -117,6 +188,8 @@ export async function recomputeHeroStats(playerId: string) {
       rows.push({
         playerId,
         heroName,
+        heroId: undefined,
+        heroIcon: undefined,
         combatPower,
         games: 0,
         wins: 0,
@@ -124,6 +197,15 @@ export async function recomputeHeroStats(playerId: string) {
         deaths: 0,
         assists: 0,
         totalScore: 0,
+        scoreGames: 0,
+        totalEconomy: 0,
+        totalDurationSec: 0,
+        totalDamage: 0,
+        damageGames: 0,
+        totalTakenDamage: 0,
+        takenGames: 0,
+        totalJoinPct: 0,
+        joinGames: 0,
       });
     }
   }
@@ -133,10 +215,101 @@ export async function recomputeHeroStats(playerId: string) {
   }
 }
 
+/** 用对局战力重建 sync 来源的英雄战力历史（保留手动录入） */
+async function refreshHeroPowerHistoryFromMatches(playerId: string) {
+  const groups = await prisma.match.groupBy({
+    by: ["heroName"],
+    where: { playerId, combatPower: { gt: 0 } },
+  });
+
+  for (const { heroName } of groups) {
+    const matches = await prisma.match.findMany({
+      where: { playerId, heroName, combatPower: { gt: 0 } },
+      orderBy: { playedAt: "asc" },
+      select: { combatPower: true, playedAt: true, heroId: true },
+    });
+
+    let prev: number | null = null;
+    const data: Array<{
+      playerId: string;
+      heroName: string;
+      heroId?: string;
+      combatPower: number;
+      recordedAt: Date;
+      source: "sync";
+    }> = [];
+    for (const m of matches) {
+      if (m.combatPower == null || m.combatPower === prev) continue;
+      prev = m.combatPower;
+      data.push({
+        playerId,
+        heroName,
+        heroId: m.heroId ?? undefined,
+        combatPower: m.combatPower,
+        recordedAt: m.playedAt,
+        source: "sync",
+      });
+    }
+
+    await prisma.heroPowerHistory.deleteMany({
+      where: { playerId, heroName, source: "sync" },
+    });
+    if (data.length) {
+      await prisma.heroPowerHistory.createMany({ data });
+    }
+  }
+}
+
+async function persistMatchDetailUpdates(
+  playerId: string,
+  matches: NormalizedMatch[],
+) {
+  for (const m of matches) {
+    const hasDetail =
+      (m.equips && m.equips.length > 0) ||
+      m.economy != null ||
+      m.damage != null ||
+      m.takenDamage != null ||
+      m.joinPct != null ||
+      m.combatPower != null;
+    if (!hasDetail) continue;
+
+    await prisma.match.updateMany({
+      where: { playerId, externalId: m.externalId },
+      data: {
+        ...(m.economy != null ? { economy: m.economy } : {}),
+        ...(m.economyPct != null ? { economyPct: m.economyPct } : {}),
+        ...(m.damage != null ? { damage: m.damage } : {}),
+        ...(m.damagePct != null ? { damagePct: m.damagePct } : {}),
+        ...(m.takenDamage != null ? { takenDamage: m.takenDamage } : {}),
+        ...(m.takenDamagePct != null ? { takenDamagePct: m.takenDamagePct } : {}),
+        ...(m.joinPct != null ? { joinPct: m.joinPct } : {}),
+        ...(m.combatPower != null ? { combatPower: m.combatPower } : {}),
+        ...(m.equips?.length ? { equipsJson: JSON.stringify(m.equips) } : {}),
+      },
+    });
+  }
+}
+
+async function getSyncStatusForPlayer(playerId: string): Promise<SyncStatus> {
+  const job = await prisma.syncJob.findFirst({
+    where: { playerId },
+    orderBy: { startedAt: "desc" },
+  });
+  if (!job) return { status: "idle" };
+  if (job.status === "running") {
+    return { status: "running", message: job.message, pulled: job.pulled };
+  }
+  if (job.status === "failed") {
+    return { status: "failed", message: job.message, pulled: job.pulled };
+  }
+  return { status: "success", message: job.message, pulled: job.pulled };
+}
+
 async function persistFetchResult(
   playerId: string,
   nickname: string,
-  result: Awaited<ReturnType<ReturnType<typeof getWzryApiClient>["fetchBattles"]>>,
+  result: FetchResult,
 ) {
   const tierScore = parseRankScore(result.profile.currentRank, result.profile.currentStars);
   const seasonWins = result.profile.seasonWins;
@@ -156,9 +329,18 @@ async function persistFetchResult(
       currentRank: result.profile.currentRank,
       currentStars: result.profile.currentStars,
       tierScore,
-      // 不覆盖 0–110 的排位/巅峰评分；增量时未带赛季字段则保留原值
+      // 增量时未带赛季字段则保留原值；评分来自营地赛季页 averageScore
       ...(seasonWins != null ? { seasonWins } : {}),
       ...(seasonGames != null ? { seasonGames } : {}),
+      ...(result.profile.rankScore != null
+        ? { rankScore: clampRating(result.profile.rankScore) }
+        : {}),
+      ...(result.profile.peakRating != null
+        ? { peakRating: clampRating(result.profile.peakRating) }
+        : {}),
+      ...(result.profile.peakScore != null
+        ? { peakScore: result.profile.peakScore }
+        : {}),
       ...(result.profile.mvpCount != null ? { mvpCount: result.profile.mvpCount } : {}),
       ...(result.profile.goldCount != null ? { goldCount: result.profile.goldCount } : {}),
       lastSyncAt: new Date(),
@@ -228,7 +410,14 @@ async function persistFetchResult(
         mvpType: m.mvpType,
         side: m.side,
         economy: m.economy,
+        economyPct: m.economyPct,
         damage: m.damage,
+        damagePct: m.damagePct,
+        takenDamage: m.takenDamage,
+        takenDamagePct: m.takenDamagePct,
+        joinPct: m.joinPct,
+        combatPower: m.combatPower,
+        equipsJson: m.equips?.length ? JSON.stringify(m.equips) : undefined,
         rawJson: m.rawJson,
       },
       update: {
@@ -256,8 +445,15 @@ async function persistFetchResult(
         medalIcon: m.medalIcon,
         mvpType: m.mvpType,
         side: m.side,
-        economy: m.economy,
-        damage: m.damage,
+        ...(m.economy != null ? { economy: m.economy } : {}),
+        ...(m.economyPct != null ? { economyPct: m.economyPct } : {}),
+        ...(m.damage != null ? { damage: m.damage } : {}),
+        ...(m.damagePct != null ? { damagePct: m.damagePct } : {}),
+        ...(m.takenDamage != null ? { takenDamage: m.takenDamage } : {}),
+        ...(m.takenDamagePct != null ? { takenDamagePct: m.takenDamagePct } : {}),
+        ...(m.joinPct != null ? { joinPct: m.joinPct } : {}),
+        ...(m.combatPower != null ? { combatPower: m.combatPower } : {}),
+        ...(m.equips?.length ? { equipsJson: JSON.stringify(m.equips) } : {}),
         rawJson: m.rawJson,
       },
     });
@@ -273,7 +469,31 @@ async function persistFetchResult(
 
   await trimMatchesToLatest(playerId, CAMP_BATTLE_SYNC_MAX_MATCHES);
   await recomputeRankDeltas(playerId);
+
+  const prevPowers = await prisma.heroStat.findMany({
+    where: { playerId },
+    select: { heroName: true, combatPower: true, heroId: true },
+  });
+  const prevPowerMap = new Map(prevPowers.map((h) => [h.heroName, h.combatPower]));
   await recomputeHeroStats(playerId);
+
+  const nextPowers = await prisma.heroStat.findMany({
+    where: { playerId, combatPower: { gt: 0 } },
+    select: { heroName: true, combatPower: true, heroId: true },
+  });
+  for (const h of nextPowers) {
+    const prev = prevPowerMap.get(h.heroName) ?? 0;
+    if (h.combatPower !== prev) {
+      await recordHeroPowerSnapshot(playerId, {
+        heroName: h.heroName,
+        heroId: h.heroId,
+        combatPower: h.combatPower,
+        source: "sync",
+        applyToStat: false,
+      });
+    }
+  }
+
   return pulled;
 }
 
@@ -312,11 +532,173 @@ async function recomputeRankDeltas(playerId: string) {
   }
 }
 
-/** 按营地 ID 查询并同步战绩到本地 */
+/**
+ * 后台两阶段同步：先入库战绩列表（快），再补全对局详情（慢）。
+ * 同一玩家并发调用会复用已有 running job。
+ */
+export async function startPlayerSync(pending: PendingPlayerSync) {
+  if (syncingPlayerIds.has(pending.playerId)) return;
+
+  const job = await prisma.syncJob.findUnique({ where: { id: pending.jobId } });
+  if (!job || job.playerId !== pending.playerId || job.status !== "running") {
+    return;
+  }
+
+  syncingPlayerIds.add(pending.playerId);
+
+  const client = getWzryApiClient();
+  const jobId = pending.jobId;
+
+  try {
+    await prisma.syncJob.update({
+      where: { id: jobId },
+      data: { message: "正在同步战绩列表…" },
+    });
+
+    const matchCount = await prisma.match.count({
+      where: { playerId: pending.playerId },
+    });
+    const seeded = matchCount >= CAMP_BATTLE_SYNC_MAX_MATCHES;
+    const knownExternalIds = seeded
+      ? (
+          await prisma.match.findMany({
+            where: { playerId: pending.playerId },
+            orderBy: { playedAt: "desc" },
+            take: CAMP_BATTLE_SYNC_MAX_MATCHES,
+            select: { externalId: true },
+          })
+        ).map((m) => m.externalId)
+      : undefined;
+
+    // 阶段 1：列表入库（跳过详情）
+    const result = await client.fetchBattles(pending.campId, {
+      nickname: pending.nickname,
+      knownExternalIds,
+      enrichDetails: false,
+    });
+    result.profile.gameNickname = pending.nickname;
+    const pulled = await persistFetchResult(
+      pending.playerId,
+      pending.nickname,
+      result,
+    );
+
+    await prisma.syncJob.update({
+      where: { id: jobId },
+      data: {
+        pulled,
+        message: seeded
+          ? `列表已同步 ${pulled} 场新对局，正在补全详情…`
+          : `列表已同步 ${pulled} 场，正在补全详情…`,
+      },
+    });
+
+    // 阶段 2：逐场补全详情并立刻写库，前端轮询可逐场看到出装/经济/伤害/战力
+    let detailNote = "";
+    if (result.roleId) {
+      try {
+        // 增量同步时 result.matches 可能很少；补拉库中尚无战力的对局
+        const missingPower = await prisma.match.findMany({
+          where: {
+            playerId: pending.playerId,
+            combatPower: null,
+            rawJson: { not: null },
+          },
+          orderBy: { playedAt: "desc" },
+          take: CAMP_BATTLE_SYNC_MAX_MATCHES,
+          select: {
+            externalId: true,
+            rawJson: true,
+            heroName: true,
+            playedAt: true,
+            mode: true,
+            modeName: true,
+            result: true,
+            kills: true,
+            deaths: true,
+            assists: true,
+          },
+        });
+        const byExternal = new Map(
+          result.matches.map((m) => [m.externalId, m] as const),
+        );
+        for (const row of missingPower) {
+          if (byExternal.has(row.externalId)) continue;
+          byExternal.set(row.externalId, {
+            externalId: row.externalId,
+            playedAt: row.playedAt,
+            mode: row.mode as NormalizedMatch["mode"],
+            modeName: row.modeName,
+            heroName: row.heroName,
+            result: row.result as NormalizedMatch["result"],
+            kills: row.kills,
+            deaths: row.deaths,
+            assists: row.assists,
+            rawJson: row.rawJson ?? undefined,
+          });
+        }
+        const toEnrich = [...byExternal.values()];
+
+        if (toEnrich.length) {
+          await enrichMatchesWithBattleDetail(toEnrich, result.roleId, {
+            onEnriched: async (match, progress) => {
+              await persistMatchDetailUpdates(pending.playerId, [match]);
+              await prisma.syncJob.update({
+                where: { id: jobId },
+                data: {
+                  message: `正在补全详情 ${progress.fetched}/${progress.target}…`,
+                },
+              });
+            },
+          });
+
+          await recomputeHeroStats(pending.playerId);
+          await refreshHeroPowerHistoryFromMatches(pending.playerId);
+        }
+      } catch {
+        detailNote = "（详情补全未完成）";
+      }
+    }
+
+    await prisma.syncJob.update({
+      where: { id: jobId },
+      data: {
+        status: "success",
+        pulled,
+        finishedAt: new Date(),
+        message:
+          (seeded
+            ? `增量同步 ${pulled} 场新对局（保留最近 ${CAMP_BATTLE_SYNC_MAX_MATCHES} 条）`
+            : `全量同步 ${pulled} 场（8 页 / 最多 ${CAMP_BATTLE_SYNC_MAX_MATCHES} 条）`) +
+          detailNote,
+      },
+    });
+  } catch (err) {
+    const message =
+      err instanceof WzryApiError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : "同步失败";
+    await prisma.player.update({
+      where: { id: pending.playerId },
+      data: { lastSyncError: message, lastSyncAt: new Date() },
+    });
+    await prisma.syncJob.update({
+      where: { id: jobId },
+      data: { status: "failed", message, finishedAt: new Date() },
+    });
+    throw err;
+  } finally {
+    syncingPlayerIds.delete(pending.playerId);
+  }
+}
+
+/** 按营地 ID 查询：快速返回看板，需要同步时返回 pendingSync 供调用方调度 */
 export async function lookupPlayerByCampId(
   campIdRaw: string,
   opts?: { forceRefresh?: boolean; ignoreCooldown?: boolean },
-) {
+): Promise<LookupResult> {
   const campId = campIdRaw.trim();
   if (!/^\d{5,15}$/.test(campId)) {
     throw new PlayerServiceError("营地 ID 应为 5–15 位数字", 400);
@@ -368,14 +750,28 @@ export async function lookupPlayerByCampId(
       },
     });
   } else {
-    const patch: { gameNickname?: string; campId?: string; area?: string } = {};
+    const patch: {
+      gameNickname?: string;
+      campId?: string;
+      area?: string;
+      currentRank?: string;
+      currentStars?: number;
+      tierScore?: number;
+    } = {};
     if (player.gameNickname !== displayName) patch.gameNickname = displayName;
     if (player.campId !== hit.campId) patch.campId = hit.campId;
     if (hit.area && player.area !== hit.area) patch.area = hit.area;
+    if (hit.currentRank && player.currentRank !== hit.currentRank) {
+      patch.currentRank = hit.currentRank;
+      patch.currentStars = hit.currentStars ?? 0;
+      patch.tierScore = parseRankScore(hit.currentRank, hit.currentStars ?? 0);
+    }
     if (Object.keys(patch).length) {
       player = await prisma.player.update({ where: { id: player.id }, data: patch });
     }
   }
+
+  let pendingSync: PendingPlayerSync | undefined;
 
   if (needRefresh) {
     if (opts?.forceRefresh && !opts.ignoreCooldown && player.lastSyncAt) {
@@ -386,63 +782,32 @@ export async function lookupPlayerByCampId(
       }
     }
 
-    const job = await prisma.syncJob.create({
-      data: { playerId: player.id, status: "running" },
+    const running = await prisma.syncJob.findFirst({
+      where: { playerId: player.id, status: "running" },
+      orderBy: { startedAt: "desc" },
     });
 
-    try {
-      const matchCount = await prisma.match.count({ where: { playerId: player.id } });
-      const seeded = matchCount >= CAMP_BATTLE_SYNC_MAX_MATCHES;
-      const knownExternalIds = seeded
-        ? (
-            await prisma.match.findMany({
-              where: { playerId: player.id },
-              orderBy: { playedAt: "desc" },
-              take: CAMP_BATTLE_SYNC_MAX_MATCHES,
-              select: { externalId: true },
-            })
-          ).map((m) => m.externalId)
-        : undefined;
-
-      const result = await client.fetchBattles(hit.campId, {
+    if (running) {
+      pendingSync = {
+        playerId: player.id,
+        campId: hit.campId,
         nickname: displayName,
-        knownExternalIds,
-      });
-      result.profile.gameNickname = displayName;
-      const pulled = await persistFetchResult(player.id, displayName, result);
-      await prisma.syncJob.update({
-        where: { id: job.id },
+        jobId: running.id,
+      };
+    } else {
+      const job = await prisma.syncJob.create({
         data: {
-          status: "success",
-          pulled,
-          finishedAt: new Date(),
-          message: seeded
-            ? `增量同步 ${pulled} 场新对局（保留最近 ${CAMP_BATTLE_SYNC_MAX_MATCHES} 条）`
-            : `全量同步 ${pulled} 场（8 页 / 最多 ${CAMP_BATTLE_SYNC_MAX_MATCHES} 条）`,
+          playerId: player.id,
+          status: "running",
+          message: "正在同步战绩…",
         },
       });
-    } catch (err) {
-      const message =
-        err instanceof WzryApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "同步失败";
-      await prisma.player.update({
-        where: { id: player.id },
-        data: { lastSyncError: message, lastSyncAt: new Date() },
-      });
-      await prisma.syncJob.update({
-        where: { id: job.id },
-        data: { status: "failed", message, finishedAt: new Date() },
-      });
-      if (err instanceof WzryApiError) {
-        throw new PlayerServiceError(
-          message,
-          err.code === "rate_limit" ? 429 : err.code === "config" ? 503 : 400,
-        );
-      }
-      throw new PlayerServiceError(message, 502);
+      pendingSync = {
+        playerId: player.id,
+        campId: hit.campId,
+        nickname: displayName,
+        jobId: job.id,
+      };
     }
   } else {
     await prisma.player.update({
@@ -451,14 +816,17 @@ export async function lookupPlayerByCampId(
     });
   }
 
-  return getPlayerDashboard(displayName);
+  const data = await getPlayerDashboard(displayName);
+  if (!data) throw new PlayerServiceError("未找到该玩家", 404);
+
+  return { data, pendingSync };
 }
 
 /** @deprecated 保留兼容；新逻辑请用 lookupPlayerByCampId */
 export async function lookupPlayerByNickname(
   nicknameRaw: string,
   opts?: { forceRefresh?: boolean },
-) {
+): Promise<LookupResult> {
   const nickname = nicknameRaw.trim();
   if (!nickname) throw new PlayerServiceError("请输入王者名称", 400);
 
@@ -471,7 +839,10 @@ export async function lookupPlayerByNickname(
   if (!existing) {
     throw new PlayerServiceError("请使用营地 ID 查询；已入库玩家可从排行榜进入", 400);
   }
-  return lookupPlayerByCampId(existing.campId.includes(":") ? existing.campId.split(":")[0] : existing.campId, opts);
+  return lookupPlayerByCampId(
+    existing.campId.includes(":") ? existing.campId.split(":")[0] : existing.campId,
+    opts,
+  );
 }
 
 export async function getPlayerDashboard(
@@ -518,7 +889,7 @@ export async function getPlayerDashboard(
     ...(hero ? { heroName: hero } : {}),
   };
 
-  const [total, wins, kdaAgg, matches, rankMatches, peakMatches, likeCount] =
+  const [total, wins, kdaAgg, matches, rankMatches, peakMatches, likeCount, syncStatus] =
     await Promise.all([
     prisma.match.count({ where }),
     prisma.match.count({ where: { ...where, result: "win" } }),
@@ -566,6 +937,7 @@ export async function getPlayerDashboard(
       },
     }),
     prisma.playerLike.count({ where: { playerId: player.id } }),
+    getSyncStatusForPlayer(player.id),
   ]);
 
   const sumKills = kdaAgg._sum.kills ?? 0;
@@ -591,6 +963,7 @@ export async function getPlayerDashboard(
       currentRank: player.currentRank,
       currentStars: player.currentStars,
       rankScore: player.rankScore,
+      peakRating: player.peakRating,
       peakScore: player.peakScore,
       seasonGames: player.seasonGames,
       seasonWins: player.seasonWins,
@@ -604,7 +977,10 @@ export async function getPlayerDashboard(
       queryCount: player.queryCount,
       likeCount,
     },
-    matches,
+    matches: matches.map(({ equipsJson, rawJson: _rawJson, ...m }) => ({
+      ...m,
+      equips: parseEquipsJson(equipsJson),
+    })),
     total,
     wins,
     matchWinRate: total ? Math.round((wins / total) * 1000) / 10 : 0,
@@ -612,15 +988,50 @@ export async function getPlayerDashboard(
     matchAvgScore,
     page,
     pageSize,
-    heroStats: player.heroStats.map((h) => ({
-      ...h,
-      winRate: h.games ? Math.round((h.wins / h.games) * 1000) / 10 : 0,
-      avgKda:
-        h.deaths === 0
-          ? h.kills + h.assists
-          : Math.round(((h.kills + h.assists) / h.deaths) * 100) / 100,
-      avgScore: h.games ? Math.round((h.totalScore / h.games) * 10) / 10 : 0,
-    })),
+    heroStats: player.heroStats.map((h) => {
+      const scoreGames = h.scoreGames || 0;
+      const avgScore = scoreGames
+        ? Math.round((h.totalScore / scoreGames) * 10) / 10
+        : h.games
+          ? Math.round((h.totalScore / h.games) * 10) / 10
+          : 0;
+      const avgEconomyPerMin =
+        h.totalDurationSec > 0
+          ? Math.round((h.totalEconomy / (h.totalDurationSec / 60)) * 10) / 10
+          : null;
+      const avgDamage = h.damageGames
+        ? Math.round(h.totalDamage / h.damageGames)
+        : null;
+      const avgTakenDamage = h.takenGames
+        ? Math.round(h.totalTakenDamage / h.takenGames)
+        : null;
+      const avgJoinPct = h.joinGames
+        ? Math.round((h.totalJoinPct / h.joinGames) * 10) / 10
+        : null;
+      const avgKills = h.games ? Math.round((h.kills / h.games) * 10) / 10 : 0;
+      const avgDeaths = h.games ? Math.round((h.deaths / h.games) * 10) / 10 : 0;
+      const avgAssists = h.games ? Math.round((h.assists / h.games) * 10) / 10 : 0;
+      return {
+        heroName: h.heroName,
+        heroIcon: h.heroIcon,
+        combatPower: h.combatPower > 0 ? h.combatPower : null,
+        games: h.games,
+        wins: h.wins,
+        winRate: h.games ? Math.round((h.wins / h.games) * 1000) / 10 : 0,
+        avgKda:
+          h.deaths === 0
+            ? h.kills + h.assists
+            : Math.round(((h.kills + h.assists) / h.deaths) * 100) / 100,
+        avgKills,
+        avgDeaths,
+        avgAssists,
+        avgScore,
+        avgEconomyPerMin,
+        avgDamage,
+        avgTakenDamage,
+        avgJoinPct,
+      };
+    }),
     rankSeries: rankMatches.map((m) => ({
       t: m.playedAt.toISOString(),
       score: m.rankScore,
@@ -636,6 +1047,7 @@ export async function getPlayerDashboard(
       hero: m.heroName,
     })),
     cooldown: COOLDOWN,
+    syncStatus,
   };
 }
 
@@ -681,10 +1093,13 @@ export async function syncPlayerById(playerId: string) {
   if (!/^\d{5,15}$/.test(campId)) {
     throw new PlayerServiceError("该玩家缺少有效营地 ID，无法同步", 400);
   }
-  await lookupPlayerByCampId(campId, {
+  const { pendingSync } = await lookupPlayerByCampId(campId, {
     forceRefresh: true,
     ignoreCooldown: true,
   });
+  if (pendingSync) {
+    await startPlayerSync(pendingSync);
+  }
   return { nickname: player.gameNickname, campId };
 }
 
@@ -697,10 +1112,13 @@ async function syncPlayers(
     const p = players[i];
     try {
       const campId = p.campId.includes(":") ? p.campId.split(":")[0] : p.campId;
-      await lookupPlayerByCampId(campId, {
+      const { pendingSync } = await lookupPlayerByCampId(campId, {
         forceRefresh: true,
         ignoreCooldown: opts?.ignoreCooldown,
       });
+      if (pendingSync) {
+        await startPlayerSync(pendingSync);
+      }
       results.push({ nickname: p.gameNickname, ok: true, message: "ok" });
     } catch (e) {
       results.push({

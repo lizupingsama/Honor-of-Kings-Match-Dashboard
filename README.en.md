@@ -32,8 +32,8 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 | Page | Description |
 |------|-------------|
 | Home `/` | Look up and sync stats by Camp ID (5–15 digits) |
-| Player `/p/{nickname}` | Rank / peak curves, hero stats, match list & details; likes (once per browser per day) |
-| Match `/matches/:id` | Single-match detail |
+| Player `/p/{nickname}` | Rank / peak curves, hero stats (economy / damage / taken / join aggregates), match list; likes (once per browser per day); pollable sync progress |
+| Match `/matches/:id` | Single-match detail: economy / damage / taken damage (with team %), join rate, equips, etc. |
 | Hero power `/hero-power` | National province / city / county power thresholds by hero and server |
 | Leaderboard `/leaderboard` | Independent rankings (see below) |
 
@@ -42,8 +42,9 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 - **Rating**: mode ratings (toggle ranked rating / peak rating, range 0–110)
 - **Ranked**: star count and ranked rating, expandable rank curve
 - **Peak**: peak score, expandable peak curve
-- **Hero power**: pick a hero, rank by that hero’s power, expandable curve
-- **Win rate**: expandable win-rate curve
+- **Hero power**: ranked by per-match combat power from battle detail (after detail sync), expandable curve
+- **Win rate / Avg score / KDA**: expandable win-rate curve; avg score & KDA require a minimum game count
+- **Contribution**: economy/min, avg damage / taken / join (only matches with all four fields)
 - **Hero / Activity**: hero-related and activity boards
 
 ### Admin `/admin`
@@ -58,6 +59,8 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 ### Sync
 
 - Manual refresh with cooldown (default 300s)
+- Lookup APIs return the dashboard quickly; when a sync is needed it runs in the background and the UI can poll `syncStatus`
+- `camp` mode is two-phase: persist the battle list first, then enrich each match with detail (equips, economy / damage / taken %, join rate, per-match combat power); the UI can refresh as details land
 - In-process auto-sync of stale players (default hourly; can be disabled)
 - Optional HTTP cron: `GET/POST /api/cron/auto-sync` (protect with `CRON_SECRET`)
 - `camp` mode: first sync up to ~8 pages / 100 matches; later incremental merge (cap ~100)
@@ -169,17 +172,20 @@ If auth expires, an admin must re-scan the WeChat QR code at `/admin`.
 
 ### 2. Player page
 
-- Rank / peak curves and hero aggregates
-- Filter / paginate matches and open match detail
+- Rank / peak curves and richer hero aggregates (economy, damage, taken damage, join rate)
+- Filter / paginate matches; list and detail show equips, taken damage, join rate, etc. after detail sync
+- Sync progress can be shown while a job is running
 - Like: at most once per browser per player per day
 
 ### 3. Hero power
 
 Open `/hero-power`, pick hero and server, view national province / city / county thresholds. Uses a separate power API (anonymous by default; set `WZRY_API_KEY` in production).
 
+The in-app hero-power leaderboard and curves prefer per-match `fightPower` from battle detail (by match time), which is a different source from the national threshold query.
+
 ### 4. Leaderboard
 
-Open `/leaderboard` and switch among rating / ranked / peak / hero power / win rate, etc. Some boards support expandable history curves.
+Open `/leaderboard` and switch among rating / ranked / peak / hero power / win rate / avg score / KDA / contribution, etc. Some boards support expandable history curves. The contribution board can sort by damage, taken damage, join rate, or economy/min.
 
 ### 5. Admin
 
@@ -384,6 +390,6 @@ A: Controlled by `DATABASE_URL`. Example `file:./players.db` is relative to the 
 
 Issues and pull requests are welcome.
 
-This repository does not currently ship a formal LICENSE file. Contact the maintainer before redistributing.
+This project is licensed under the [MIT License](./LICENSE).
 
 **Disclaimer:** For learning and personal use only. You are responsible for sync behavior, account risk, and compliance. Do not use this project for commercial gain or in ways that violate the game’s user agreement.

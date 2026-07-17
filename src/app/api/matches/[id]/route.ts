@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { handleRouteError, jsonError, jsonOk } from "@/lib/api";
+import { parseEquipsJson } from "@/lib/match-equips";
 
 export async function GET(
   _req: Request,
@@ -35,7 +36,13 @@ export async function GET(
         mvp: match.mvp,
         gold: match.gold,
         economy: match.economy,
+        economyPct: match.economyPct,
         damage: match.damage,
+        damagePct: match.damagePct,
+        takenDamage: match.takenDamage,
+        takenDamagePct: match.takenDamagePct,
+        joinPct: match.joinPct,
+        equips: parseEquipsJson(match.equipsJson),
         player: {
           gameNickname: match.player.gameNickname,
         },

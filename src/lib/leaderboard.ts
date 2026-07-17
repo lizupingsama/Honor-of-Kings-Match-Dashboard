@@ -395,6 +395,128 @@ export async function getKdaLeaderboard(opts?: {
     .filter((row): row is NonNullable<typeof row> => row != null);
 }
 
+export type ContributionSortBy = "damage" | "taken" | "join" | "economy";
+
+/** 团队贡献榜：分均经济 / 场均输出 / 承伤 / 参团（仅统计四项均有数据的对局） */
+export async function getContributionLeaderboard(opts?: {
+  area?: string;
+  limit?: number;
+  offset?: number;
+  minGames?: number;
+  sortBy?: ContributionSortBy;
+}) {
+  const minGames = opts?.minGames ?? MIN_GAMES;
+  const limit = opts?.limit ?? 100;
+  const offset = opts?.offset ?? 0;
+  const sortBy = opts?.sortBy ?? "damage";
+
+  const grouped = await prisma.match.groupBy({
+    by: ["playerId"],
+    where: {
+      damage: { not: null },
+      takenDamage: { not: null },
+      joinPct: { not: null },
+      economy: { not: null },
+      durationSec: { gt: 0 },
+      player: {
+        lastSyncAt: { not: null },
+        ...(opts?.area && opts.area !== "all" ? { area: opts.area } : {}),
+      },
+    },
+    _avg: { damage: true, takenDamage: true, joinPct: true },
+    _sum: { economy: true, durationSec: true },
+    _count: { _all: true },
+  });
+
+  const rows = grouped
+    .filter(
+      (g) =>
+        g._count._all >= minGames &&
+        g._avg.damage != null &&
+        g._avg.takenDamage != null &&
+        g._avg.joinPct != null &&
+        (g._sum.durationSec ?? 0) > 0,
+    )
+    .map((g) => {
+      const totalDurationSec = g._sum.durationSec as number;
+      const totalEconomy = g._sum.economy ?? 0;
+      return {
+        playerId: g.playerId,
+        games: g._count._all,
+        avgEconomyPerMin:
+          Math.round((totalEconomy / (totalDurationSec / 60)) * 10) / 10,
+        avgDamage: Math.round(g._avg.damage as number),
+        avgTakenDamage: Math.round(g._avg.takenDamage as number),
+        avgJoinPct: Math.round((g._avg.joinPct as number) * 10) / 10,
+      };
+    });
+
+  rows.sort((a, b) => {
+    if (sortBy === "taken") {
+      return (
+        b.avgTakenDamage - a.avgTakenDamage ||
+        b.avgDamage - a.avgDamage ||
+        b.games - a.games
+      );
+    }
+    if (sortBy === "join") {
+      return (
+        b.avgJoinPct - a.avgJoinPct ||
+        b.avgDamage - a.avgDamage ||
+        b.games - a.games
+      );
+    }
+    if (sortBy === "economy") {
+      return (
+        b.avgEconomyPerMin - a.avgEconomyPerMin ||
+        b.avgDamage - a.avgDamage ||
+        b.games - a.games
+      );
+    }
+    return (
+      b.avgDamage - a.avgDamage ||
+      b.avgTakenDamage - a.avgTakenDamage ||
+      b.games - a.games
+    );
+  });
+
+  const page = rows.slice(offset, offset + limit);
+  if (!page.length) return [];
+
+  const players = await prisma.player.findMany({
+    where: { id: { in: page.map((r) => r.playerId) } },
+    select: {
+      id: true,
+      gameNickname: true,
+      gameAvatarUrl: true,
+      area: true,
+      currentRank: true,
+      currentStars: true,
+    },
+  });
+  const byId = new Map(players.map((p) => [p.id, p]));
+
+  return page
+    .map((r, i) => {
+      const p = byId.get(r.playerId);
+      if (!p) return null;
+      return {
+        rank: offset + i + 1,
+        gameNickname: p.gameNickname,
+        gameAvatarUrl: p.gameAvatarUrl,
+        area: p.area,
+        currentRank: p.currentRank,
+        currentStars: p.currentStars,
+        games: r.games,
+        avgEconomyPerMin: r.avgEconomyPerMin,
+        avgDamage: r.avgDamage,
+        avgTakenDamage: r.avgTakenDamage,
+        avgJoinPct: r.avgJoinPct,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
+}
+
 export type HeroSortBy = "composite" | "winRate" | "games" | "avgKda" | "avgScore";
 
 /**
@@ -449,7 +571,12 @@ export async function getHeroLeaderboard(opts: {
       s.deaths === 0
         ? s.kills + s.assists
         : Math.round(((s.kills + s.assists) / s.deaths) * 100) / 100;
-    const avgScore = s.games ? Math.round((s.totalScore / s.games) * 10) / 10 : 0;
+    const scoreGames = s.scoreGames || 0;
+    const avgScore = scoreGames
+      ? Math.round((s.totalScore / scoreGames) * 10) / 10
+      : s.games
+        ? Math.round((s.totalScore / s.games) * 10) / 10
+        : 0;
     const base = {
       gameNickname: s.player.gameNickname,
       gameAvatarUrl: s.player.gameAvatarUrl,

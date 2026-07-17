@@ -248,6 +248,29 @@ export async function getHeroPowerSeries(gameNickname: string, heroName: string)
   });
   if (!player) return [];
 
+  // 优先用对局详情里的 fightPower，按对局时间形成曲线（与巅峰分曲线一致）
+  const matches = await prisma.match.findMany({
+    where: {
+      playerId: player.id,
+      heroName,
+      combatPower: { gt: 0 },
+    },
+    orderBy: { playedAt: "asc" },
+    select: {
+      playedAt: true,
+      combatPower: true,
+      result: true,
+    },
+  });
+  if (matches.length) {
+    return matches.map((m) => ({
+      t: m.playedAt.toISOString(),
+      value: m.combatPower as number,
+      source: "sync",
+      result: m.result,
+    }));
+  }
+
   const rows = await prisma.heroPowerHistory.findMany({
     where: { playerId: player.id, heroName },
     orderBy: { recordedAt: "asc" },

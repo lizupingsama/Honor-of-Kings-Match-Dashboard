@@ -1,3 +1,9 @@
+export type MatchEquip = {
+  equipId: number;
+  equipIcon: string;
+  equipName: string;
+};
+
 export type NormalizedMatch = {
   externalId: string;
   playedAt: Date;
@@ -30,7 +36,21 @@ export type NormalizedMatch = {
   /** 阵营：blue | red */
   side?: "blue" | "red";
   economy?: number;
+  /** 经济占本队比例（0–100） */
+  economyPct?: number;
   damage?: number;
+  /** 输出占本队比例（0–100） */
+  damagePct?: number;
+  /** 承伤（totalBehurtCnt） */
+  takenDamage?: number;
+  /** 承伤占本队比例（0–100） */
+  takenDamagePct?: number;
+  /** 参团率（0–100） */
+  joinPct?: number;
+  /** 对局时英雄战力（营地 fightPower） */
+  combatPower?: number;
+  /** 本场出装（来自对局详情） */
+  equips?: MatchEquip[];
   rawJson?: string;
 };
 
@@ -42,6 +62,12 @@ export type NormalizedProfile = {
   currentStars: number;
   seasonWins?: number;
   seasonGames?: number;
+  /** 本赛季排位平均评分（营地 averageScore，约 0–110） */
+  rankScore?: number;
+  /** 本赛季巅峰平均评分（营地 masterInfo.averageScore） */
+  peakRating?: number;
+  /** 当前巅峰分（营地 masterScore） */
+  peakScore?: number;
   mvpCount?: number;
   goldCount?: number;
   area?: "wechat" | "qq";
@@ -50,6 +76,8 @@ export type NormalizedProfile = {
 export type FetchResult = {
   profile: NormalizedProfile;
   matches: NormalizedMatch[];
+  /** 营地 roleId，用于补全对局详情 */
+  roleId?: string;
 };
 
 export type PlayerSearchHit = {
@@ -80,6 +108,8 @@ export interface WzryApiClient {
       nickname?: string;
       /** 已入库对局 externalId；传入则增量拉取（撞到已知对局即停） */
       knownExternalIds?: string[];
+      /** 是否拉取对局详情（出装/经济/伤害）；默认 true */
+      enrichDetails?: boolean;
     },
   ): Promise<FetchResult>;
 }

@@ -460,3 +460,23 @@ export async function getSeasonpage(roleId: string) {
     roleId,
   });
 }
+
+export type BattleDetailParams = {
+  gameSeq: string;
+  gameSvr: string;
+  relaySvr: string;
+  battleType: number;
+  targetRoleId: string;
+};
+
+/** 单场对局详情（含十人面板、出装等） */
+export async function getBattleDetail(params: BattleDetailParams) {
+  return request("/game/battledetail", {
+    recommendPrivacy: 0,
+    battleType: params.battleType,
+    gameSvr: params.gameSvr,
+    relaySvr: params.relaySvr,
+    targetRoleId: params.targetRoleId,
+    gameSeq: params.gameSeq,
+  });
+}

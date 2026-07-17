@@ -17,12 +17,14 @@ type BoardType =
   | "winrate"
   | "avgscore"
   | "kda"
+  | "contribution"
   | "hero"
   | "active";
 type ScoreMode = "ranked" | "peak";
 type HeroSortBy = "composite" | "winRate" | "games" | "avgKda" | "avgScore";
 type WinRateSortBy = "winRate" | "wins";
 type KdaSortBy = "kda" | "kills" | "deaths" | "assists";
+type ContributionSortBy = "damage" | "taken" | "join" | "economy";
 type ChartMetric = "rankScore" | "peakRating" | "peakScore" | "combatPower" | "tierScore" | "winRate";
 
 type Row = {
@@ -45,9 +47,19 @@ type Row = {
   avgKills?: number;
   avgDeaths?: number;
   avgAssists?: number;
+  avgEconomyPerMin?: number;
+  avgDamage?: number;
+  avgTakenDamage?: number;
+  avgJoinPct?: number;
   composite?: number;
   area?: string;
 };
+
+/** 输出/承伤等大数值按 k 展示，如 15234 → 15.2k */
+function fmtK(n: number) {
+  const k = Math.round((n / 1000) * 10) / 10;
+  return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
+}
 
 export default function LeaderboardPage() {
   const [type, setType] = useState<BoardType>("rank");
@@ -55,6 +67,8 @@ export default function LeaderboardPage() {
   const [heroSortBy, setHeroSortBy] = useState<HeroSortBy>("composite");
   const [winRateSortBy, setWinRateSortBy] = useState<WinRateSortBy>("winRate");
   const [kdaSortBy, setKdaSortBy] = useState<KdaSortBy>("kda");
+  const [contributionSortBy, setContributionSortBy] =
+    useState<ContributionSortBy>("damage");
   const [showExtraBoards, setShowExtraBoards] = useState(false);
   const [area, setArea] = useState("all");
   const [hero, setHero] = useState("李白");
@@ -80,20 +94,24 @@ export default function LeaderboardPage() {
   const [seriesLoading, setSeriesLoading] = useState<string | null>(null);
 
   useEffect(() => {
+    const forPower = type === "power";
     fetch(withBasePath("/api/leaderboard"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "heroes" }),
+      body: JSON.stringify({ action: "heroes", forPower }),
     })
       .then((r) => r.json())
       .then((json) => {
         if (json.ok && json.data.heroes?.length) {
-          setHeroes(json.data.heroes.map((h: { name: string }) => h.name));
-          setHero(json.data.heroes[0].name);
+          const names = json.data.heroes.map((h: { name: string }) => h.name);
+          setHeroes(names);
+          setHero((prev) => (names.includes(prev) ? prev : names[0]));
+        } else if (forPower) {
+          setHeroes([]);
         }
       })
       .catch(() => {});
-  }, []);
+  }, [type]);
 
   useEffect(() => {
     setLoading(true);
@@ -104,13 +122,17 @@ export default function LeaderboardPage() {
     if (type === "hero") qs.set("sortBy", heroSortBy);
     if (type === "winrate") qs.set("sortBy", winRateSortBy);
     if (type === "kda") qs.set("sortBy", kdaSortBy);
+    if (type === "contribution") qs.set("sortBy", contributionSortBy);
     fetch(withBasePath(`/api/leaderboard?${qs}`))
       .then((r) => r.json())
       .then((json) => {
         if (json.ok) {
           setRows(json.data.rows || []);
           if (
-            (type === "winrate" || type === "avgscore" || type === "kda") &&
+            (type === "winrate" ||
+              type === "avgscore" ||
+              type === "kda" ||
+              type === "contribution") &&
             json.data.minGames
           ) {
             setMinGames(json.data.minGames);
@@ -120,7 +142,16 @@ export default function LeaderboardPage() {
         }
       })
       .finally(() => setLoading(false));
-  }, [type, scoreMode, area, hero, heroSortBy, winRateSortBy, kdaSortBy]);
+  }, [
+    type,
+    scoreMode,
+    area,
+    hero,
+    heroSortBy,
+    winRateSortBy,
+    kdaSortBy,
+    contributionSortBy,
+  ]);
 
   function activeMetric(): ChartMetric | null {
     if (type === "score") return scoreMode === "ranked" ? "rankScore" : "peakRating";
@@ -221,7 +252,8 @@ export default function LeaderboardPage() {
         <h1 className="text-2xl font-semibold text-[var(--gold-bright)]">站内排行榜</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           排位（段位星数）、巅峰（巅峰分数）相互独立。胜率榜 / 均分榜 / KDA
-          榜需至少 {minGames} 场；英雄榜按本地已同步对局统计，满 1 场即可上榜。
+          榜 / 贡献榜需至少 {minGames} 场；英雄榜按本地已同步对局统计，满 1
+          场即可上榜。英雄战力榜来自对局详情中的战力，同步详情后可上榜并查看曲线。
         </p>
       </div>
 
@@ -233,6 +265,7 @@ export default function LeaderboardPage() {
             ["winrate", "胜率榜"],
             ["avgscore", "均分榜"],
             ["kda", "KDA榜"],
+            ["contribution", "贡献榜"],
             ["hero", "英雄榜"],
             ["active", "活跃榜"],
           ] as const
@@ -296,8 +329,14 @@ export default function LeaderboardPage() {
             className="input !w-auto max-sm:flex-1"
             value={hero}
             onChange={(e) => setHero(e.target.value)}
+            disabled={type === "power" && heroes.length === 0}
           >
-            {(heroes.length ? heroes : ["李白", "韩信", "赵云"]).map((h) => (
+            {(heroes.length
+              ? heroes
+              : type === "power"
+                ? ["（暂无战力数据）"]
+                : ["李白", "韩信", "赵云"]
+            ).map((h) => (
               <option key={h} value={h}>
                 {h}
               </option>
@@ -342,6 +381,21 @@ export default function LeaderboardPage() {
             <option value="assists">助攻</option>
           </select>
         )}
+        {type === "contribution" && (
+          <select
+            className="input !w-auto max-sm:flex-1"
+            value={contributionSortBy}
+            onChange={(e) =>
+              setContributionSortBy(e.target.value as ContributionSortBy)
+            }
+            title="贡献榜排序"
+          >
+            <option value="damage">场均输出</option>
+            <option value="taken">场均承伤</option>
+            <option value="join">场均参团</option>
+            <option value="economy">分均经济</option>
+          </select>
+        )}
       </div>
 
       {type === "hero" && (
@@ -380,15 +434,27 @@ export default function LeaderboardPage() {
           <div className="p-8 text-center text-[var(--muted)]">加载中…</div>
         ) : rows.length === 0 ? (
           <div className="p-8 text-center text-[var(--muted)]">
-            暂无数据，可先去{" "}
-            <Link href="/" className="text-[var(--gold)]">
-              查询玩家
-            </Link>
-            ，或在{" "}
-            <Link href="/admin" className="text-[var(--gold)]">
-              管理后台
-            </Link>{" "}
-            录入数据。
+            {type === "power" ? (
+              <>
+                暂无该英雄的战力数据。请先去{" "}
+                <Link href="/" className="text-[var(--gold)]">
+                  查询并同步玩家
+                </Link>
+                （需补全对局详情），同步完成后会出现在战力榜，点击行可查看战力曲线。
+              </>
+            ) : (
+              <>
+                暂无数据，可先去{" "}
+                <Link href="/" className="text-[var(--gold)]">
+                  查询玩家
+                </Link>
+                ，或在{" "}
+                <Link href="/admin" className="text-[var(--gold)]">
+                  管理后台
+                </Link>{" "}
+                录入数据。
+              </>
+            )}
           </div>
         ) : (
           <>
@@ -440,6 +506,15 @@ export default function LeaderboardPage() {
                     ["场均击杀", row.avgKills ?? 0],
                     ["场均死亡", row.avgDeaths ?? 0],
                     ["场均助攻", row.avgAssists ?? 0],
+                    ["近期场次", row.games ?? 0],
+                  );
+                }
+                if (type === "contribution") {
+                  detailItems.push(
+                    ["分均经济", row.avgEconomyPerMin ?? 0],
+                    ["场均输出", fmtK(row.avgDamage ?? 0)],
+                    ["场均承伤", fmtK(row.avgTakenDamage ?? 0)],
+                    ["场均参团", `${row.avgJoinPct ?? 0}%`],
                     ["近期场次", row.games ?? 0],
                   );
                 }
@@ -565,6 +640,15 @@ export default function LeaderboardPage() {
                     <th>近期场次</th>
                   </>
                 )}
+                {type === "contribution" && (
+                  <>
+                    <th>分均经济</th>
+                    <th>场均输出</th>
+                    <th>场均承伤</th>
+                    <th>场均参团</th>
+                    <th>近期场次</th>
+                  </>
+                )}
                 {type === "active" && <th>赛季场次(排位)</th>}
                 {expandable && <th className="w-16"></th>}
               </tr>
@@ -662,6 +746,47 @@ export default function LeaderboardPage() {
                           <td>{row.avgKills ?? 0}</td>
                           <td>{row.avgDeaths ?? 0}</td>
                           <td>{row.avgAssists ?? 0}</td>
+                          <td>{row.games ?? 0}</td>
+                        </>
+                      )}
+                      {type === "contribution" && (
+                        <>
+                          <td
+                            className={
+                              contributionSortBy === "economy"
+                                ? "font-medium text-[var(--gold-bright)]"
+                                : undefined
+                            }
+                          >
+                            {row.avgEconomyPerMin ?? 0}
+                          </td>
+                          <td
+                            className={
+                              contributionSortBy === "damage"
+                                ? "font-medium text-[var(--gold-bright)]"
+                                : undefined
+                            }
+                          >
+                            {fmtK(row.avgDamage ?? 0)}
+                          </td>
+                          <td
+                            className={
+                              contributionSortBy === "taken"
+                                ? "font-medium text-[var(--gold-bright)]"
+                                : undefined
+                            }
+                          >
+                            {fmtK(row.avgTakenDamage ?? 0)}
+                          </td>
+                          <td
+                            className={
+                              contributionSortBy === "join"
+                                ? "font-medium text-[var(--gold-bright)]"
+                                : undefined
+                            }
+                          >
+                            {row.avgJoinPct ?? 0}%
+                          </td>
                           <td>{row.games ?? 0}</td>
                         </>
                       )}

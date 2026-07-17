@@ -21,6 +21,7 @@ type DashData = {
     currentRank?: string | null;
     currentStars?: number;
     rankScore?: number;
+    peakRating?: number;
     peakScore?: number;
     seasonGames?: number;
     seasonWins?: number;
@@ -49,15 +50,35 @@ type DashData = {
     mvp?: boolean;
     mvpType?: string | null;
     gold?: boolean;
+    economy?: number | null;
+    economyPct?: number | null;
+    damage?: number | null;
+    damagePct?: number | null;
+    takenDamage?: number | null;
+    takenDamagePct?: number | null;
+    joinPct?: number | null;
+    equips?: Array<{
+      equipId: number;
+      equipIcon: string;
+      equipName: string;
+    }> | null;
   }>;
   heroStats: Array<{
     heroName: string;
     heroIcon?: string | null;
+    combatPower?: number | null;
     games: number;
     wins: number;
     winRate: number;
     avgKda: number;
+    avgKills?: number;
+    avgDeaths?: number;
+    avgAssists?: number;
     avgScore: number;
+    avgEconomyPerMin?: number | null;
+    avgDamage?: number | null;
+    avgTakenDamage?: number | null;
+    avgJoinPct?: number | null;
   }>;
   rankSeries: Array<{
     t: string;
@@ -78,6 +99,11 @@ type DashData = {
   matchWinRate?: number;
   matchAvgKda?: number;
   matchAvgScore?: number;
+  syncStatus?: {
+    status: "idle" | "running" | "success" | "failed";
+    message?: string | null;
+    pulled?: number;
+  };
 };
 
 function PlayerDashboard() {
@@ -97,6 +123,7 @@ function PlayerDashboard() {
   const [heroSort, setHeroSort] = useState<"games" | "winRate" | "avgScore">("games");
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
+  const wasSyncingRef = useRef(false);
 
   useEffect(() => {
     const h = searchParams.get("hero");
@@ -147,6 +174,25 @@ function PlayerDashboard() {
     if (nickname) load().catch(() => setError("加载失败"));
   }, [load, nickname]);
 
+  const syncing = data?.syncStatus?.status === "running";
+
+  useEffect(() => {
+    if (!syncing) {
+      if (wasSyncingRef.current) {
+        wasSyncingRef.current = false;
+        setRefreshing(false);
+        setMessage("同步完成");
+      }
+      return;
+    }
+    wasSyncingRef.current = true;
+    // 详情逐场入库，稍密轮询以便界面尽快跟上
+    const timer = setInterval(() => {
+      load().catch(() => {});
+    }, 800);
+    return () => clearInterval(timer);
+  }, [syncing, load]);
+
   const sortedHeroes = useMemo(() => {
     if (!data?.heroStats) return [];
     return [...data.heroStats].sort((a, b) => b[heroSort] - a[heroSort]);
@@ -167,6 +213,7 @@ function PlayerDashboard() {
         : data?.player.campId;
       if (!id || !/^\d{5,15}$/.test(id)) {
         setMessage("缺少有效营地 ID，请从首页重新查询");
+        setRefreshing(false);
         return;
       }
       const res = await fetch(withBasePath("/api/lookup"), {
@@ -177,14 +224,22 @@ function PlayerDashboard() {
       const json = await res.json();
       if (!json.ok) {
         setMessage(json.error || "刷新失败");
-      } else {
-        setMessage("已刷新最新战绩");
-        // 按当前筛选条件重新拉取，避免覆盖 range/mode 等
+        setRefreshing(false);
+        return;
+      }
+      setData(json.data);
+      setMessage(
+        json.data?.syncStatus?.status === "running"
+          ? "正在后台同步战绩…"
+          : "已是最新战绩",
+      );
+      if (json.data?.syncStatus?.status !== "running") {
+        setRefreshing(false);
         await load();
       }
+      // syncing 时由轮询结束再关 refreshing
     } catch {
       setMessage("网络错误");
-    } finally {
       setRefreshing(false);
     }
   }
@@ -244,18 +299,31 @@ function PlayerDashboard() {
           <button className="btn btn-ghost flex-1 sm:flex-none" onClick={share}>
             分享
           </button>
-          <button className="btn btn-primary flex-1 sm:flex-none" onClick={refresh} disabled={refreshing}>
-            {refreshing ? "刷新中…" : "刷新战绩"}
+          <button
+            className="btn btn-primary flex-1 sm:flex-none"
+            onClick={refresh}
+            disabled={refreshing || syncing}
+          >
+            {refreshing || syncing ? "同步中…" : "刷新战绩"}
           </button>
         </div>
       </div>
 
-      {message && (
+      {syncing && (
+        <div className="rounded-xl border border-[rgba(212,175,106,0.35)] bg-[rgba(212,175,106,0.08)] px-4 py-3 text-sm text-[var(--gold-bright)]">
+          {data.syncStatus?.message || "正在同步战绩…"}
+          {typeof data.syncStatus?.pulled === "number" && data.syncStatus.pulled > 0
+            ? `（已拉取 ${data.syncStatus.pulled} 场）`
+            : ""}
+          <span className="ml-2 text-[var(--muted)]">页面会自动更新</span>
+        </div>
+      )}
+      {message && !syncing && (
         <div className="rounded-xl border border-[var(--line)] bg-black/20 px-4 py-3 text-sm">
           {message}
         </div>
       )}
-      {data.player.lastSyncError && (
+      {data.player.lastSyncError && data.syncStatus?.status !== "running" && (
         <div className="rounded-xl border border-[rgba(196,92,74,0.4)] bg-[rgba(196,92,74,0.1)] px-4 py-3 text-sm text-[#f0b4aa]">
           同步提示：{data.player.lastSyncError}
         </div>
@@ -376,7 +444,13 @@ function PlayerDashboard() {
             )}
           </div>
         </div>
-        <MatchTable matches={data.matches} />
+        {data.matches.length === 0 && syncing ? (
+          <p className="py-8 text-center text-sm text-[var(--muted)]">
+            正在拉取对局列表，请稍候…
+          </p>
+        ) : (
+          <MatchTable matches={data.matches} />
+        )}
         <p className="mt-3 text-xs text-[var(--muted)]">共 {data.total} 场</p>
       </section>
     </div>
