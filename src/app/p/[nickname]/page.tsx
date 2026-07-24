@@ -100,6 +100,8 @@ type DashData = {
   matchWinRate?: number;
   matchAvgKda?: number;
   matchAvgScore?: number;
+  page?: number;
+  pageSize?: number;
   syncStatus?: {
     status: "idle" | "running" | "success" | "failed";
     message?: string | null;
@@ -113,6 +115,9 @@ function PlayerDashboard() {
   const searchParams = useSearchParams();
   const nickname = decodeURIComponent(params.nickname || "");
   const matchesRef = useRef<HTMLElement>(null);
+  const matchesSentinelRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
+  const matchPageRef = useRef(1);
 
   const [data, setData] = useState<DashData | null>(null);
   const [error, setError] = useState("");
@@ -124,7 +129,12 @@ function PlayerDashboard() {
   const [heroSort, setHeroSort] = useState<"games" | "winRate" | "avgScore">("games");
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
+  const [matchPage, setMatchPage] = useState(1);
+  const [hasMoreMatches, setHasMoreMatches] = useState(false);
+  const [loadingMoreMatches, setLoadingMoreMatches] = useState(false);
   const wasSyncingRef = useRef(false);
+
+  matchPageRef.current = matchPage;
 
   useEffect(() => {
     const h = searchParams.get("hero");
@@ -155,25 +165,71 @@ function PlayerDashboard() {
     syncHeroInUrl("");
   }
 
-  const load = useCallback(async () => {
-    const qs = new URLSearchParams({ range, mode, result, side });
-    if (hero) qs.set("hero", hero);
-    const res = await fetch(
-      withBasePath(`/api/players/${encodeURIComponent(nickname)}?${qs}`),
-      { cache: "no-store" },
-    );
-    const json = await res.json();
-    if (!json.ok) {
-      setError(json.error || "加载失败");
-      return;
-    }
-    setData(json.data);
-    setError("");
-  }, [nickname, range, mode, result, side, hero]);
+  const applyMatchPageMeta = useCallback((dash: DashData, pageNum: number) => {
+    const pageSize = dash.pageSize || 100;
+    setMatchPage(pageNum);
+    setHasMoreMatches(pageNum * pageSize < dash.total);
+  }, []);
+
+  const load = useCallback(
+    async (opts?: { page?: number; append?: boolean }) => {
+      const pageNum = opts?.page ?? 1;
+      const append = opts?.append ?? false;
+      const qs = new URLSearchParams({
+        range,
+        mode,
+        result,
+        side,
+        page: String(pageNum),
+      });
+      if (hero) qs.set("hero", hero);
+      const res = await fetch(
+        withBasePath(`/api/players/${encodeURIComponent(nickname)}?${qs}`),
+        { cache: "no-store" },
+      );
+      const json = await res.json();
+      if (!json.ok) {
+        if (!append) setError(json.error || "加载失败");
+        return;
+      }
+      const dash = json.data as DashData;
+      setData((prev) => {
+        if (!append || !prev) return dash;
+        const seen = new Set(prev.matches.map((m) => m.id));
+        const added = dash.matches.filter((m) => !seen.has(m.id));
+        return { ...dash, matches: [...prev.matches, ...added] };
+      });
+      applyMatchPageMeta(dash, pageNum);
+      setError("");
+    },
+    [nickname, range, mode, result, side, hero, applyMatchPageMeta],
+  );
 
   useEffect(() => {
     if (nickname) load().catch(() => setError("加载失败"));
   }, [load, nickname]);
+
+  useEffect(() => {
+    const el = matchesSentinelRef.current;
+    if (!el || !hasMoreMatches) return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting || loadingMoreRef.current) return;
+        loadingMoreRef.current = true;
+        setLoadingMoreMatches(true);
+        load({ page: matchPageRef.current + 1, append: true })
+          .catch(() => {})
+          .finally(() => {
+            loadingMoreRef.current = false;
+            setLoadingMoreMatches(false);
+          });
+      },
+      { rootMargin: "240px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMoreMatches, load]);
 
   const syncing = data?.syncStatus?.status === "running";
 
@@ -234,6 +290,7 @@ function PlayerDashboard() {
         return;
       }
       setData(json.data);
+      applyMatchPageMeta(json.data as DashData, 1);
       setMessage(
         json.data?.syncStatus?.status === "running"
           ? "正在后台同步战绩…"
@@ -457,7 +514,16 @@ function PlayerDashboard() {
         ) : (
           <MatchTable matches={data.matches} />
         )}
-        <p className="mt-3 text-xs text-[var(--muted)]">共 {data.total} 场</p>
+        {hasMoreMatches ? (
+          <div ref={matchesSentinelRef} className="mt-3 py-2 text-center text-xs text-[var(--muted)]">
+            {loadingMoreMatches ? "加载更多对局…" : "下滑加载更多"}
+          </div>
+        ) : null}
+        <p className="mt-3 text-xs text-[var(--muted)]">
+          {data.total > 0
+            ? `已显示 ${data.matches.length} / ${data.total} 场`
+            : "共 0 场"}
+        </p>
       </section>
     </div>
   );

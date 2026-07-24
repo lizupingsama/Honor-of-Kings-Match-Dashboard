@@ -12,6 +12,11 @@ import { CampApiError, CAMP_BATTLE_SYNC_MAX_MATCHES } from "./camp/camp-api";
 import { enrichMatchesWithBattleDetail } from "./camp/camp-client";
 import { parseEquipsJson } from "./match-equips";
 
+/** 本地数据库最多保留的对局数；刷新仍只拉最近 CAMP_BATTLE_SYNC_MAX_MATCHES 条 */
+const MATCH_STORAGE_MAX_MATCHES = 1000;
+/** 个人页对局列表每页条数 */
+const MATCH_LIST_PAGE_SIZE = 100;
+
 export type SyncStatus = {
   status: "idle" | "running" | "success" | "failed";
   message?: string | null;
@@ -470,7 +475,7 @@ async function persistFetchResult(
     source: "sync",
   });
 
-  await trimMatchesToLatest(playerId, CAMP_BATTLE_SYNC_MAX_MATCHES);
+  await trimMatchesToLatest(playerId, MATCH_STORAGE_MAX_MATCHES);
   await recomputeRankDeltas(playerId);
 
   const prevPowers = await prisma.heroStat.findMany({
@@ -699,7 +704,7 @@ export async function startPlayerSync(pending: PendingPlayerSync) {
         finishedAt: new Date(),
         message:
           (seeded
-            ? `增量同步 ${pulled} 场新对局（保留最近 ${CAMP_BATTLE_SYNC_MAX_MATCHES} 条）`
+            ? `增量同步 ${pulled} 场新对局（保留最近 ${MATCH_STORAGE_MAX_MATCHES} 条）`
             : `全量同步 ${pulled} 场（8 页 / 最多 ${CAMP_BATTLE_SYNC_MAX_MATCHES} 条）`) +
           detailNote,
       },
@@ -902,7 +907,7 @@ export async function getPlayerDashboard(
   const side = query?.side || "all";
   const hero = query?.hero || "";
   const page = Math.max(1, query?.page || 1);
-  const pageSize = 100;
+  const pageSize = MATCH_LIST_PAGE_SIZE;
 
   const since = (() => {
     const now = Date.now();
