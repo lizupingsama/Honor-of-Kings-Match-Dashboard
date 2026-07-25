@@ -1,11 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import { withBasePath } from "@/lib/base-path";
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,6 +16,7 @@ export default function AdminLoginPage() {
       const res = await fetch(withBasePath(`/api/admin/auth?t=${Date.now()}`), {
         method: "POST",
         cache: "no-store",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
           "Cache-Control": "no-cache",
@@ -29,8 +28,9 @@ export default function AdminLoginPage() {
         setError(json.error || "登录失败");
         return;
       }
-      router.replace("/admin");
-      router.refresh();
+      // 软跳转偶发读不到刚写入的 Cookie，整页进入后台更稳
+      window.location.assign(withBasePath("/admin"));
+      return;
     } catch {
       setError("网络错误");
     } finally {
