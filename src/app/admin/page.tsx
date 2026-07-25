@@ -29,6 +29,10 @@ type CampAuthStatus = {
   expires?: string;
 };
 
+function adminAuthUrl() {
+  return withBasePath(`/api/admin/auth?t=${Date.now()}`);
+}
+
 type SyncSummary = {
   synced: number;
   ok: number;
@@ -107,7 +111,10 @@ export default function AdminPage() {
   }, [router]);
 
   useEffect(() => {
-    fetch(withBasePath("/api/admin/auth"))
+    fetch(adminAuthUrl(), {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+    })
       .then((r) => r.json())
       .then((json) => {
         if (!json.ok || !json.data.authenticated) {
@@ -245,7 +252,11 @@ export default function AdminPage() {
   }
 
   async function logout() {
-    await fetch(withBasePath("/api/admin/auth"), { method: "DELETE" });
+    await fetch(adminAuthUrl(), {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+    });
     router.replace("/admin/login");
   }
 

@@ -15,9 +15,13 @@ export default function AdminLoginPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(withBasePath("/api/admin/auth"), {
+      const res = await fetch(withBasePath(`/api/admin/auth?t=${Date.now()}`), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+        },
         body: JSON.stringify({ password }),
       });
       const json = await res.json();
