@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { withBasePath } from "@/lib/base-path";
+import { apiFetch } from "@/lib/client-fetch";
 
 export default function HomePage() {
   const router = useRouter();
@@ -25,7 +25,7 @@ export default function HomePage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(withBasePath("/api/lookup"), {
+      const res = await apiFetch("/api/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campId: id }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { apiFetch } from "@/lib/client-fetch";
 import { withBasePath } from "@/lib/base-path";
 
 export default function AdminLoginPage() {
@@ -13,14 +14,10 @@ export default function AdminLoginPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(withBasePath(`/api/admin/auth?t=${Date.now()}`), {
+      const res = await apiFetch("/api/admin/auth", {
         method: "POST",
-        cache: "no-store",
         credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-cache",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
       const json = await res.json();

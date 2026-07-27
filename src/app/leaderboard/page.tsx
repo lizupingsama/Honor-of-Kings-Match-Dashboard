@@ -7,7 +7,7 @@ import { formatRankLabel } from "@/lib/rank";
 import { ScoreTrendChart, type TrendPoint } from "@/components/score-trend-chart";
 import { RankChart } from "@/components/rank-chart";
 import { PlayerAvatar } from "@/components/player-avatar";
-import { withBasePath } from "@/lib/base-path";
+import { apiFetch } from "@/lib/client-fetch";
 import { fmtK } from "@/lib/format";
 
 type BoardType =
@@ -90,7 +90,7 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     const forPower = type === "power";
-    fetch(withBasePath("/api/leaderboard"), {
+    apiFetch("/api/leaderboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "heroes", forPower }),
@@ -118,7 +118,7 @@ export default function LeaderboardPage() {
     if (type === "winrate") qs.set("sortBy", winRateSortBy);
     if (type === "kda") qs.set("sortBy", kdaSortBy);
     if (type === "contribution") qs.set("sortBy", contributionSortBy);
-    fetch(withBasePath(`/api/leaderboard?${qs}`))
+    apiFetch(`/api/leaderboard?${qs}`)
       .then((r) => r.json())
       .then((json) => {
         if (json.ok) {
@@ -199,7 +199,7 @@ export default function LeaderboardPage() {
         metric,
       });
       if (metric === "combatPower") qs.set("hero", hero);
-      const json = await fetch(withBasePath(`/api/leaderboard?${qs}`)).then((r) => r.json());
+      const json = await apiFetch(`/api/leaderboard?${qs}`).then((r) => r.json());
       if (json.ok) {
         const series = json.data.series || [];
         if (metric === "tierScore") {

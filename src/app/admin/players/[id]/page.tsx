@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { ScoreTrendChart } from "@/components/score-trend-chart";
-import { withBasePath } from "@/lib/base-path";
+import { apiFetch } from "@/lib/client-fetch";
 
 type History = {
   id: string;
@@ -105,7 +105,7 @@ export default function AdminPlayerEditPage() {
 
   async function load() {
     setError("");
-    const res = await fetch(withBasePath(`/api/admin/players/${id}`));
+    const res = await apiFetch(`/api/admin/players/${id}`);
     const json = await res.json();
     if (res.status === 401) {
       router.replace("/admin/login");
@@ -146,7 +146,7 @@ export default function AdminPlayerEditPage() {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(withBasePath(`/api/admin/players/${id}`), {
+      const res = await apiFetch(`/api/admin/players/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -191,7 +191,7 @@ export default function AdminPlayerEditPage() {
       note: histForm.note || null,
       applyToPlayer: true,
     };
-    const res = await fetch(withBasePath(`/api/admin/players/${id}/history`), {
+    const res = await apiFetch(`/api/admin/players/${id}/history`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -218,7 +218,7 @@ export default function AdminPlayerEditPage() {
       setError("请填写英雄名称与战力");
       return;
     }
-    const res = await fetch(withBasePath(`/api/admin/players/${id}/hero-power`), {
+    const res = await apiFetch(`/api/admin/players/${id}/hero-power`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -246,7 +246,7 @@ export default function AdminPlayerEditPage() {
 
   async function onDeleteHistory(hid: string) {
     if (!confirm("删除这条评分快照？")) return;
-    const res = await fetch(withBasePath(`/api/admin/history/${hid}`), { method: "DELETE" });
+    const res = await apiFetch(`/api/admin/history/${hid}`, { method: "DELETE" });
     const json = await res.json();
     if (!json.ok) {
       setError(json.error || "删除失败");
@@ -257,7 +257,7 @@ export default function AdminPlayerEditPage() {
 
   async function onDeletePowerHistory(hid: string) {
     if (!confirm("删除这条英雄战力快照？")) return;
-    const res = await fetch(withBasePath(`/api/admin/hero-power-history/${hid}`), {
+    const res = await apiFetch(`/api/admin/hero-power-history/${hid}`, {
       method: "DELETE",
     });
     const json = await res.json();
@@ -270,8 +270,8 @@ export default function AdminPlayerEditPage() {
 
   async function onDeleteHero(heroName: string) {
     if (!confirm(`删除英雄「${heroName}」的战力数据与历史？`)) return;
-    const res = await fetch(
-      withBasePath(`/api/admin/players/${id}/hero-power?hero=${encodeURIComponent(heroName)}`),
+    const res = await apiFetch(
+      `/api/admin/players/${id}/hero-power?hero=${encodeURIComponent(heroName)}`,
       { method: "DELETE" },
     );
     const json = await res.json();

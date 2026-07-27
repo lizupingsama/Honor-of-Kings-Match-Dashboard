@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { withBasePath } from "@/lib/base-path";
+import { apiFetch } from "@/lib/client-fetch";
 
 const CLIENT_KEY_STORAGE = "wzry_like_client_key";
 
@@ -39,11 +39,8 @@ export function PlayerLikeButton({
   useEffect(() => {
     let cancelled = false;
     const clientKey = getOrCreateClientKey();
-    fetch(
-      withBasePath(
-        `/api/players/${encodeURIComponent(nickname)}/like?clientKey=${encodeURIComponent(clientKey)}`,
-      ),
-      { cache: "no-store" },
+    apiFetch(
+      `/api/players/${encodeURIComponent(nickname)}/like?clientKey=${encodeURIComponent(clientKey)}`,
     )
       .then((r) => r.json())
       .then((json) => {
@@ -65,8 +62,8 @@ export function PlayerLikeButton({
     setPending(true);
     try {
       const clientKey = getOrCreateClientKey();
-      const res = await fetch(
-        withBasePath(`/api/players/${encodeURIComponent(nickname)}/like`),
+      const res = await apiFetch(
+        `/api/players/${encodeURIComponent(nickname)}/like`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -10,7 +10,7 @@ import { HeroGrid } from "@/components/hero-grid";
 import { MatchTable } from "@/components/match-table";
 import { PlayerLikeButton } from "@/components/player-like-button";
 import { PlayerAvatar } from "@/components/player-avatar";
-import { withBasePath } from "@/lib/base-path";
+import { apiFetch } from "@/lib/client-fetch";
 
 type DashData = {
   player: {
@@ -183,9 +183,8 @@ function PlayerDashboard() {
         page: String(pageNum),
       });
       if (hero) qs.set("hero", hero);
-      const res = await fetch(
-        withBasePath(`/api/players/${encodeURIComponent(nickname)}?${qs}`),
-        { cache: "no-store" },
+      const res = await apiFetch(
+        `/api/players/${encodeURIComponent(nickname)}?${qs}`,
       );
       const json = await res.json();
       if (!json.ok) {
@@ -278,7 +277,7 @@ function PlayerDashboard() {
         setRefreshing(false);
         return;
       }
-      const res = await fetch(withBasePath("/api/lookup"), {
+      const res = await apiFetch("/api/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campId: id, forceRefresh: true }),

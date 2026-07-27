@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { withBasePath } from "@/lib/base-path";
+import { apiFetch } from "@/lib/client-fetch";
 
 type PlayerRow = {
   id: string;
@@ -30,7 +30,7 @@ type CampAuthStatus = {
 };
 
 function adminAuthUrl() {
-  return withBasePath(`/api/admin/auth?t=${Date.now()}`);
+  return "/api/admin/auth";
 }
 
 type SyncSummary = {
@@ -78,7 +78,7 @@ export default function AdminPage() {
     try {
       const qs = new URLSearchParams();
       if (query.trim()) qs.set("q", query.trim());
-      const res = await fetch(withBasePath(`/api/admin/players?${qs}`));
+      const res = await apiFetch(`/api/admin/players?${qs}`);
       const json = await res.json();
       if (res.status === 401) {
         router.replace("/admin/login");
@@ -98,7 +98,7 @@ export default function AdminPage() {
 
   const loadCampAuth = useCallback(async () => {
     try {
-      const res = await fetch(withBasePath("/api/admin/camp-auth"));
+      const res = await apiFetch("/api/admin/camp-auth");
       const json = await res.json();
       if (res.status === 401) {
         router.replace("/admin/login");
@@ -111,7 +111,7 @@ export default function AdminPage() {
   }, [router]);
 
   useEffect(() => {
-    fetch(adminAuthUrl(), {
+    apiFetch(adminAuthUrl(), {
       cache: "no-store",
       headers: { "Cache-Control": "no-cache" },
     })
@@ -138,8 +138,8 @@ export default function AdminPage() {
     let cancelled = false;
     const timer = setInterval(async () => {
       try {
-        const res = await fetch(
-          withBasePath(`/api/admin/camp-auth/qr?taskId=${encodeURIComponent(qrTaskId)}`),
+        const res = await apiFetch(
+          `/api/admin/camp-auth/qr?taskId=${encodeURIComponent(qrTaskId)}`,
         );
         const json = await res.json();
         if (cancelled || !json.ok) return;
@@ -183,7 +183,7 @@ export default function AdminPage() {
     setQrStatus("正在获取二维码…");
     setError("");
     try {
-      const res = await fetch(withBasePath("/api/admin/camp-auth/qr"), { method: "POST" });
+      const res = await apiFetch("/api/admin/camp-auth/qr", { method: "POST" });
       const json = await res.json();
       if (!json.ok) {
         setError(json.error || "获取二维码失败");
@@ -205,7 +205,7 @@ export default function AdminPage() {
     if (!confirm("确认清除营地登录态？清除后将无法同步战绩，需重新扫码。")) return;
     setCampLoading(true);
     try {
-      const res = await fetch(withBasePath("/api/admin/camp-auth"), { method: "DELETE" });
+      const res = await apiFetch("/api/admin/camp-auth", { method: "DELETE" });
       const json = await res.json();
       if (!json.ok) {
         setError(json.error || "清除失败");
@@ -231,7 +231,7 @@ export default function AdminPage() {
     setSyncMessage("正在刷新所有玩家，请不要重复点击…");
     setError("");
     try {
-      const res = await fetch(withBasePath("/api/admin/sync-all"), { method: "POST" });
+      const res = await apiFetch("/api/admin/sync-all", { method: "POST" });
       const json = await res.json();
       if (!json.ok) {
         setSyncMessage(json.error || "刷新失败");
@@ -252,7 +252,7 @@ export default function AdminPage() {
   }
 
   async function logout() {
-    await fetch(adminAuthUrl(), {
+    await apiFetch(adminAuthUrl(), {
       method: "DELETE",
       cache: "no-store",
       headers: { "Cache-Control": "no-cache" },
@@ -265,7 +265,7 @@ export default function AdminPage() {
     setCreating(true);
     setError("");
     try {
-      const res = await fetch(withBasePath("/api/admin/players"), {
+      const res = await apiFetch("/api/admin/players", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -298,7 +298,7 @@ export default function AdminPage() {
     setError("");
     setSyncMessage("");
     try {
-      const res = await fetch(withBasePath(`/api/admin/players/${id}/sync`), {
+      const res = await apiFetch(`/api/admin/players/${id}/sync`, {
         method: "POST",
       });
       const json = await res.json();
@@ -317,7 +317,7 @@ export default function AdminPage() {
 
   async function onDelete(id: string, name: string) {
     if (!confirm(`确认删除玩家「${name}」及其全部对局与评分历史？`)) return;
-    const res = await fetch(withBasePath(`/api/admin/players/${id}`), { method: "DELETE" });
+    const res = await apiFetch(`/api/admin/players/${id}`, { method: "DELETE" });
     const json = await res.json();
     if (!json.ok) {
       setError(json.error || "删除失败");

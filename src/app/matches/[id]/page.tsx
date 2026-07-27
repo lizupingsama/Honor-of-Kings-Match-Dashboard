@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { formatRankLabel } from "@/lib/rank";
-import { withBasePath } from "@/lib/base-path";
+import { apiFetch } from "@/lib/client-fetch";
 import { fmtK } from "@/lib/format";
 
 type MatchEquip = {
@@ -48,7 +48,7 @@ export default function MatchDetailPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(withBasePath(`/api/matches/${params.id}`))
+    apiFetch(`/api/matches/${params.id}`)
       .then((r) => r.json())
       .then((json) => {
         if (!json.ok) setError(json.error || "加载失败");
