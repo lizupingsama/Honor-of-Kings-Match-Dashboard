@@ -9,12 +9,14 @@ import {
   getKdaLeaderboard,
   getContributionLeaderboard,
   getHeroLeaderboard,
+  getMedalLeaderboard,
   getActiveLeaderboard,
   getMinGames,
   type HeroSortBy,
   type WinRateSortBy,
   type KdaSortBy,
   type ContributionSortBy,
+  type MedalSortBy,
 } from "@/lib/leaderboard";
 import {
   getPlayerScoreSeries,
@@ -146,6 +148,15 @@ export async function GET(req: Request) {
         sortBy,
       });
       return jsonOk({ type, rows, heroName, minGames: 1, sortBy });
+    }
+    if (type === "medal") {
+      const sortRaw = searchParams.get("sortBy") || "total";
+      const allowed: MedalSortBy[] = ["total", "top", "gold", "silver", "bronze"];
+      const sortBy = (allowed.includes(sortRaw as MedalSortBy)
+        ? sortRaw
+        : "total") as MedalSortBy;
+      const rows = await getMedalLeaderboard({ area, limit, offset, sortBy });
+      return jsonOk({ type, rows, sortBy });
     }
     if (type === "active") {
       const rows = await getActiveLeaderboard({ area, limit });

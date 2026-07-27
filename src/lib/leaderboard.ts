@@ -619,6 +619,130 @@ export async function getHeroLeaderboard(opts: {
   }));
 }
 
+export type MedalSortBy = "total" | "top" | "gold" | "silver" | "bronze";
+
+/**
+ * 奖牌榜：按本地已同步对局中的 金/银/铜牌 计数。
+ * total = 三种牌子数量之和；top = 顶级排序（金牌优先，依次银牌、铜牌）。
+ */
+export async function getMedalLeaderboard(opts?: {
+  area?: string;
+  limit?: number;
+  offset?: number;
+  sortBy?: MedalSortBy;
+}) {
+  const limit = opts?.limit ?? 100;
+  const offset = opts?.offset ?? 0;
+  const sortBy = opts?.sortBy ?? "total";
+
+  const grouped = await prisma.match.groupBy({
+    by: ["playerId", "medal"],
+    where: {
+      medal: { not: null },
+      player: {
+        lastSyncAt: { not: null },
+        ...(opts?.area && opts.area !== "all" ? { area: opts.area } : {}),
+      },
+    },
+    _count: { _all: true },
+  });
+
+  const counts = new Map<
+    string,
+    { gold: number; silver: number; bronze: number }
+  >();
+  for (const g of grouped) {
+    const medal = g.medal ?? "";
+    let tier: "gold" | "silver" | "bronze" | null = null;
+    if (medal.startsWith("金牌")) tier = "gold";
+    else if (medal.startsWith("银牌")) tier = "silver";
+    else if (medal.startsWith("铜牌")) tier = "bronze";
+    if (!tier) continue;
+    const entry = counts.get(g.playerId) ?? { gold: 0, silver: 0, bronze: 0 };
+    entry[tier] += g._count._all;
+    counts.set(g.playerId, entry);
+  }
+
+  const rows = [...counts.entries()].map(([playerId, c]) => ({
+    playerId,
+    goldMedals: c.gold,
+    silverMedals: c.silver,
+    bronzeMedals: c.bronze,
+    totalMedals: c.gold + c.silver + c.bronze,
+  }));
+
+  rows.sort((a, b) => {
+    if (sortBy === "top") {
+      return (
+        b.goldMedals - a.goldMedals ||
+        b.silverMedals - a.silverMedals ||
+        b.bronzeMedals - a.bronzeMedals
+      );
+    }
+    if (sortBy === "gold") {
+      return (
+        b.goldMedals - a.goldMedals ||
+        b.totalMedals - a.totalMedals ||
+        b.silverMedals - a.silverMedals
+      );
+    }
+    if (sortBy === "silver") {
+      return (
+        b.silverMedals - a.silverMedals ||
+        b.totalMedals - a.totalMedals ||
+        b.goldMedals - a.goldMedals
+      );
+    }
+    if (sortBy === "bronze") {
+      return (
+        b.bronzeMedals - a.bronzeMedals ||
+        b.totalMedals - a.totalMedals ||
+        b.goldMedals - a.goldMedals
+      );
+    }
+    return (
+      b.totalMedals - a.totalMedals ||
+      b.goldMedals - a.goldMedals ||
+      b.silverMedals - a.silverMedals
+    );
+  });
+
+  const page = rows.slice(offset, offset + limit);
+  if (!page.length) return [];
+
+  const players = await prisma.player.findMany({
+    where: { id: { in: page.map((r) => r.playerId) } },
+    select: {
+      id: true,
+      gameNickname: true,
+      gameAvatarUrl: true,
+      area: true,
+      currentRank: true,
+      currentStars: true,
+    },
+  });
+  const byId = new Map(players.map((p) => [p.id, p]));
+
+  return page
+    .map((r, i) => {
+      const p = byId.get(r.playerId);
+      if (!p) return null;
+      return {
+        rank: offset + i + 1,
+        gameNickname: p.gameNickname,
+        gameAvatarUrl: p.gameAvatarUrl,
+        area: p.area,
+        currentRank: p.currentRank,
+        currentStars: p.currentStars,
+        goldMedals: r.goldMedals,
+        silverMedals: r.silverMedals,
+        bronzeMedals: r.bronzeMedals,
+        totalMedals: r.totalMedals,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
+}
+
 export async function getActiveLeaderboard(opts?: {
   area?: string;
   limit?: number;

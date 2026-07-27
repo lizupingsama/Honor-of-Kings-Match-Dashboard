@@ -19,6 +19,7 @@ type BoardType =
   | "avgscore"
   | "kda"
   | "contribution"
+  | "medal"
   | "hero"
   | "active";
 type ScoreMode = "ranked" | "peak";
@@ -26,6 +27,7 @@ type HeroSortBy = "composite" | "winRate" | "games" | "avgKda" | "avgScore";
 type WinRateSortBy = "winRate" | "wins";
 type KdaSortBy = "kda" | "kills" | "deaths" | "assists";
 type ContributionSortBy = "damage" | "taken" | "join" | "economy";
+type MedalSortBy = "total" | "top" | "gold" | "silver" | "bronze";
 type ChartMetric = "rankScore" | "peakRating" | "peakScore" | "combatPower" | "tierScore" | "winRate";
 
 type Row = {
@@ -53,6 +55,10 @@ type Row = {
   avgTakenDamage?: number;
   avgJoinPct?: number;
   composite?: number;
+  goldMedals?: number;
+  silverMedals?: number;
+  bronzeMedals?: number;
+  totalMedals?: number;
   area?: string;
 };
 
@@ -64,6 +70,7 @@ export default function LeaderboardPage() {
   const [kdaSortBy, setKdaSortBy] = useState<KdaSortBy>("kda");
   const [contributionSortBy, setContributionSortBy] =
     useState<ContributionSortBy>("damage");
+  const [medalSortBy, setMedalSortBy] = useState<MedalSortBy>("total");
   const [showExtraBoards, setShowExtraBoards] = useState(false);
   const [area, setArea] = useState("all");
   const [hero, setHero] = useState("李白");
@@ -118,6 +125,7 @@ export default function LeaderboardPage() {
     if (type === "winrate") qs.set("sortBy", winRateSortBy);
     if (type === "kda") qs.set("sortBy", kdaSortBy);
     if (type === "contribution") qs.set("sortBy", contributionSortBy);
+    if (type === "medal") qs.set("sortBy", medalSortBy);
     apiFetch(`/api/leaderboard?${qs}`)
       .then((r) => r.json())
       .then((json) => {
@@ -146,6 +154,7 @@ export default function LeaderboardPage() {
     winRateSortBy,
     kdaSortBy,
     contributionSortBy,
+    medalSortBy,
   ]);
 
   function activeMetric(): ChartMetric | null {
@@ -247,7 +256,7 @@ export default function LeaderboardPage() {
         <h1 className="text-2xl font-semibold text-[var(--gold-bright)]">站内排行榜</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           排位（段位星数）、巅峰（巅峰分数）相互独立。胜率榜 / 均分榜 / KDA
-          榜 / 贡献榜需至少 {minGames} 场；英雄榜按本地已同步对局统计，满 1
+          榜 / 贡献榜需至少 {minGames} 场；奖牌榜按本地已同步对局统计，有奖牌即可上榜；英雄榜按本地已同步对局统计，满 1
           场即可上榜。英雄战力榜来自对局详情中的战力，同步详情后可上榜并查看曲线。
         </p>
       </div>
@@ -261,6 +270,7 @@ export default function LeaderboardPage() {
             ["avgscore", "均分榜"],
             ["kda", "KDA榜"],
             ["contribution", "贡献榜"],
+            ["medal", "奖牌榜"],
             ["hero", "英雄榜"],
             ["active", "活跃榜"],
           ] as const
@@ -391,7 +401,28 @@ export default function LeaderboardPage() {
             <option value="economy">分均经济</option>
           </select>
         )}
+        {type === "medal" && (
+          <select
+            className="input !w-auto max-sm:flex-1"
+            value={medalSortBy}
+            onChange={(e) => setMedalSortBy(e.target.value as MedalSortBy)}
+            title="奖牌榜排序"
+          >
+            <option value="total">总奖牌</option>
+            <option value="top">顶级</option>
+            <option value="gold">金牌</option>
+            <option value="silver">银牌</option>
+            <option value="bronze">铜牌</option>
+          </select>
+        )}
       </div>
+
+      {type === "medal" && (
+        <p className="text-xs text-[var(--muted)]">
+          奖牌榜按本地已同步对局中的奖牌文案统计，总奖牌 = 金牌 + 银牌 +
+          铜牌；顶级排序按金牌优先、依次银牌、铜牌比较。
+        </p>
+      )}
 
       {type === "hero" && (
         <p className="text-xs text-[var(--muted)]">
@@ -514,6 +545,29 @@ export default function LeaderboardPage() {
                   );
                 }
                 if (type === "active") detailItems.push(["赛季场次(排位)", row.games]);
+                if (type === "medal") {
+                  detailItems.push(
+                    ["总奖牌", row.totalMedals ?? 0],
+                    [
+                      "金牌",
+                      <span key="g" className="chip chip-medal-gold">
+                        {row.goldMedals ?? 0}
+                      </span>,
+                    ],
+                    [
+                      "银牌",
+                      <span key="s" className="chip chip-medal-silver">
+                        {row.silverMedals ?? 0}
+                      </span>,
+                    ],
+                    [
+                      "铜牌",
+                      <span key="b" className="chip chip-medal-bronze">
+                        {row.bronzeMedals ?? 0}
+                      </span>,
+                    ],
+                  );
+                }
 
                 return (
                   <div
@@ -645,6 +699,14 @@ export default function LeaderboardPage() {
                   </>
                 )}
                 {type === "active" && <th>赛季场次(排位)</th>}
+                {type === "medal" && (
+                  <>
+                    <th>总奖牌</th>
+                    <th>金牌</th>
+                    <th>银牌</th>
+                    <th>铜牌</th>
+                  </>
+                )}
                 {expandable && <th className="w-16"></th>}
               </tr>
             </thead>
@@ -786,6 +848,46 @@ export default function LeaderboardPage() {
                         </>
                       )}
                       {type === "active" && <td>{row.games}</td>}
+                      {type === "medal" && (
+                        <>
+                          <td
+                            className={
+                              medalSortBy === "total" || medalSortBy === "top"
+                                ? "font-medium text-[var(--gold-bright)]"
+                                : undefined
+                            }
+                          >
+                            {row.totalMedals ?? 0}
+                          </td>
+                          <td>
+                            <span
+                              className={`chip chip-medal-gold${
+                                medalSortBy === "gold" ? " font-semibold" : ""
+                              }`}
+                            >
+                              {row.goldMedals ?? 0}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              className={`chip chip-medal-silver${
+                                medalSortBy === "silver" ? " font-semibold" : ""
+                              }`}
+                            >
+                              {row.silverMedals ?? 0}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              className={`chip chip-medal-bronze${
+                                medalSortBy === "bronze" ? " font-semibold" : ""
+                              }`}
+                            >
+                              {row.bronzeMedals ?? 0}
+                            </span>
+                          </td>
+                        </>
+                      )}
                       {expandable && (
                         <td className="text-[var(--muted)]">{isOpen ? "收起" : "曲线"}</td>
                       )}
