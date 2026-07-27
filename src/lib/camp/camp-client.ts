@@ -423,6 +423,17 @@ export function parseBattleHonors(row: Record<string, unknown>) {
     "977937945942799fd618773e5c378d3a": "银牌游走",
     "3159d2f1733203167a9a3d5d3e4656ad": "铜牌游走",
     c717aab51e99a4bfa9c6d2e024e97512: "金牌发育路",
+    "7577421618c781e7a59b81904937a8a0": "银牌发育路",
+    "1147db2cd2a46031783a9a0fc34f7f3c": "金牌游走",
+    af6fd95b08fd1b58340b48374707262c: "铜牌发育路",
+    "029706c958a71f2aa5c187e2ef021430": "铜牌中路",
+    "39d8211165f3730700fc6db10abd170e": "银牌打野",
+    f63de8a7f98863ab3a34aada6bc4bd6f: "金牌中路",
+    "5142af35177e111837efbf85071f373b": "金牌打野",
+    c8a09fe55b4614d0307a6161f32ae479: "铜牌打野",
+    a8b5101bc81ae64cf96c67ed1ab21975: "顶级游走",
+    "926ba0111984464ad46e72dc93157fcd": "顶级发育路",
+    "5db4fef1bfc72dd2c5ae71b01ef3951b": "顶级对抗路",
   };
 
   const medalIcon = String(row.evaluateUrlV3 || "") || undefined;
