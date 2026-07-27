@@ -144,6 +144,12 @@ a {
   background: rgba(196, 92, 74, 0.12);
 }
 
+.chip-medal-top {
+  color: #f27d72;
+  border-color: rgba(214, 90, 80, 0.55);
+  background: rgba(214, 90, 80, 0.16);
+}
+
 .chip-medal-gold {
   color: #e07a4a;
   border-color: rgba(196, 120, 74, 0.55);

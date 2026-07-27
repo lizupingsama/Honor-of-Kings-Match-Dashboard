@@ -431,7 +431,7 @@ export function parseBattleHonors(row: Record<string, unknown>) {
 
   if (!medal) {
     const medalMatch = urlBlob.match(
-      /\b(gold|silver|bronze)[-_](warrior|mage|assassin|support|shooter|archer|tank)\b/i,
+      /\b(top|gold|silver|bronze)[-_](warrior|mage|assassin|support|shooter|archer|tank)\b/i,
     );
     const BRANCH: Record<number, string> = {
       1: "对抗路",
@@ -451,6 +451,7 @@ export function parseBattleHonors(row: Record<string, unknown>) {
       tank: "坦克",
     };
     const TIER: Record<string, string> = {
+      top: "顶级",
       gold: "金牌",
       silver: "银牌",
       bronze: "铜牌",

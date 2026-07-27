@@ -111,6 +111,7 @@ function formatScoreChange(m: MatchRow): { text: string; className: string } | n
 }
 
 function medalChipClass(medal: string) {
+  if (medal.startsWith("顶级")) return "chip-medal-top";
   if (medal.startsWith("金牌")) return "chip-medal-gold";
   if (medal.startsWith("铜牌")) return "chip-medal-bronze";
   return "chip-medal-silver";

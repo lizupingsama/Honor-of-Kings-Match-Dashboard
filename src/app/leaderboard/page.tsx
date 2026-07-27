@@ -55,6 +55,7 @@ type Row = {
   avgTakenDamage?: number;
   avgJoinPct?: number;
   composite?: number;
+  topMedals?: number;
   goldMedals?: number;
   silverMedals?: number;
   bronzeMedals?: number;
@@ -419,8 +420,8 @@ export default function LeaderboardPage() {
 
       {type === "medal" && (
         <p className="text-xs text-[var(--muted)]">
-          奖牌榜按本地已同步对局中的奖牌文案统计，总奖牌 = 金牌 + 银牌 +
-          铜牌；顶级排序按金牌优先、依次银牌、铜牌比较。
+          奖牌榜按本地已同步对局中的奖牌文案统计，总奖牌 = 顶级 + 金牌 + 银牌
+          + 铜牌。
         </p>
       )}
 
@@ -548,6 +549,12 @@ export default function LeaderboardPage() {
                 if (type === "medal") {
                   detailItems.push(
                     ["总奖牌", row.totalMedals ?? 0],
+                    [
+                      "顶级",
+                      <span key="t" className="chip chip-medal-top">
+                        {row.topMedals ?? 0}
+                      </span>,
+                    ],
                     [
                       "金牌",
                       <span key="g" className="chip chip-medal-gold">
@@ -702,6 +709,7 @@ export default function LeaderboardPage() {
                 {type === "medal" && (
                   <>
                     <th>总奖牌</th>
+                    <th>顶级</th>
                     <th>金牌</th>
                     <th>银牌</th>
                     <th>铜牌</th>
@@ -852,12 +860,21 @@ export default function LeaderboardPage() {
                         <>
                           <td
                             className={
-                              medalSortBy === "total" || medalSortBy === "top"
+                              medalSortBy === "total"
                                 ? "font-medium text-[var(--gold-bright)]"
                                 : undefined
                             }
                           >
                             {row.totalMedals ?? 0}
+                          </td>
+                          <td>
+                            <span
+                              className={`chip chip-medal-top${
+                                medalSortBy === "top" ? " font-semibold" : ""
+                              }`}
+                            >
+                              {row.topMedals ?? 0}
+                            </span>
                           </td>
                           <td>
                             <span
