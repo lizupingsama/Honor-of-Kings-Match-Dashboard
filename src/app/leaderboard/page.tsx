@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { formatRankLabel } from "@/lib/rank";
@@ -29,6 +29,39 @@ type KdaSortBy = "kda" | "kills" | "deaths" | "assists";
 type ContributionSortBy = "damage" | "taken" | "join" | "economy";
 type MedalSortBy = "total" | "top" | "gold" | "silver" | "bronze";
 type ChartMetric = "rankScore" | "peakRating" | "peakScore" | "combatPower" | "tierScore" | "winRate";
+
+type LeaderboardViewState = {
+  type: BoardType;
+  scoreMode: ScoreMode;
+  heroSortBy: HeroSortBy;
+  winRateSortBy: WinRateSortBy;
+  kdaSortBy: KdaSortBy;
+  contributionSortBy: ContributionSortBy;
+  medalSortBy: MedalSortBy;
+  showExtraBoards: boolean;
+  area: string;
+  hero: string;
+};
+
+const LEADERBOARD_VIEW_KEY = "wzry:leaderboard:view";
+const LEADERBOARD_SCROLL_KEY = "wzry:leaderboard:scrollY";
+
+function readStoredLeaderboardView(): Partial<LeaderboardViewState> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(LEADERBOARD_VIEW_KEY);
+    return raw ? (JSON.parse(raw) as Partial<LeaderboardViewState>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredLeaderboardScroll() {
+  if (typeof window === "undefined") return null;
+  const raw = window.sessionStorage.getItem(LEADERBOARD_SCROLL_KEY);
+  const y = raw == null ? Number.NaN : Number(raw);
+  return Number.isFinite(y) ? y : null;
+}
 
 type Row = {
   rank: number;
@@ -64,6 +97,7 @@ type Row = {
 };
 
 export default function LeaderboardPage() {
+  const [viewReady, setViewReady] = useState(false);
   const [type, setType] = useState<BoardType>("rank");
   const [scoreMode, setScoreMode] = useState<ScoreMode>("ranked");
   const [heroSortBy, setHeroSortBy] = useState<HeroSortBy>("composite");
@@ -95,8 +129,44 @@ export default function LeaderboardPage() {
     >
   >({});
   const [seriesLoading, setSeriesLoading] = useState<string | null>(null);
+  const pendingScrollRestoreRef = useRef<number | null>(null);
+
+  function rememberLeaderboardPosition() {
+    window.sessionStorage.setItem(LEADERBOARD_SCROLL_KEY, String(window.scrollY));
+  }
 
   useEffect(() => {
+    const storedView = readStoredLeaderboardView();
+    const storedScroll = readStoredLeaderboardScroll();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (storedView) {
+        if (storedView.type) setType(storedView.type);
+        if (storedView.scoreMode) setScoreMode(storedView.scoreMode);
+        if (storedView.heroSortBy) setHeroSortBy(storedView.heroSortBy);
+        if (storedView.winRateSortBy) setWinRateSortBy(storedView.winRateSortBy);
+        if (storedView.kdaSortBy) setKdaSortBy(storedView.kdaSortBy);
+        if (storedView.contributionSortBy) {
+          setContributionSortBy(storedView.contributionSortBy);
+        }
+        if (storedView.medalSortBy) setMedalSortBy(storedView.medalSortBy);
+        if (typeof storedView.showExtraBoards === "boolean") {
+          setShowExtraBoards(storedView.showExtraBoards);
+        }
+        if (storedView.area) setArea(storedView.area);
+        if (storedView.hero) setHero(storedView.hero);
+      }
+      pendingScrollRestoreRef.current = storedScroll;
+      setViewReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!viewReady) return;
     const forPower = type === "power";
     apiFetch("/api/leaderboard", {
       method: "POST",
@@ -114,11 +184,14 @@ export default function LeaderboardPage() {
         }
       })
       .catch(() => {});
-  }, [type]);
+  }, [type, viewReady]);
 
   useEffect(() => {
-    setLoading(true);
-    setExpanded(null);
+    if (!viewReady) return;
+    queueMicrotask(() => {
+      setLoading(true);
+      setExpanded(null);
+    });
     const qs = new URLSearchParams({ type, area, limit: "50" });
     if (type === "score") qs.set("scoreMode", scoreMode);
     if (type === "hero" || type === "power") qs.set("hero", hero);
@@ -156,7 +229,47 @@ export default function LeaderboardPage() {
     kdaSortBy,
     contributionSortBy,
     medalSortBy,
+    viewReady,
   ]);
+
+  useEffect(() => {
+    if (!viewReady) return;
+    window.sessionStorage.setItem(
+      LEADERBOARD_VIEW_KEY,
+      JSON.stringify({
+        type,
+        scoreMode,
+        heroSortBy,
+        winRateSortBy,
+        kdaSortBy,
+        contributionSortBy,
+        medalSortBy,
+        showExtraBoards,
+        area,
+        hero,
+      } satisfies LeaderboardViewState),
+    );
+  }, [
+    type,
+    scoreMode,
+    heroSortBy,
+    winRateSortBy,
+    kdaSortBy,
+    contributionSortBy,
+    medalSortBy,
+    showExtraBoards,
+    area,
+    hero,
+    viewReady,
+  ]);
+
+  useEffect(() => {
+    const y = pendingScrollRestoreRef.current;
+    if (!viewReady || loading || y == null) return;
+    pendingScrollRestoreRef.current = null;
+    window.sessionStorage.removeItem(LEADERBOARD_SCROLL_KEY);
+    requestAnimationFrame(() => window.scrollTo({ top: y }));
+  }, [viewReady, loading, rows.length]);
 
   function activeMetric(): ChartMetric | null {
     if (type === "score") return scoreMode === "ranked" ? "rankScore" : "peakRating";
@@ -588,6 +701,7 @@ export default function LeaderboardPage() {
                           href={`/p/${encodeURIComponent(row.gameNickname)}`}
                           className="group mt-1 inline-flex min-w-0 flex-wrap items-center gap-2 text-[var(--gold-bright)]"
                           aria-label={`进入 ${row.gameNickname} 的主页`}
+                          onClick={rememberLeaderboardPosition}
                         >
                           <PlayerAvatar
                             src={row.gameAvatarUrl}
@@ -741,7 +855,10 @@ export default function LeaderboardPage() {
                           href={`/p/${encodeURIComponent(row.gameNickname)}`}
                           className="group inline-flex min-w-0 items-center gap-2 hover:text-[var(--gold-bright)]"
                           aria-label={`进入 ${row.gameNickname} 的主页`}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            rememberLeaderboardPosition();
+                          }}
                         >
                           <PlayerAvatar
                             src={row.gameAvatarUrl}
