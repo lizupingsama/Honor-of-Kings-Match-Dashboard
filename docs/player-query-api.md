@@ -31,9 +31,11 @@
 | `gameNickname` | string | 游戏昵称 |
 | `campId` | string | 营地 ID |
 | `area` | string | 区服，如 `wechat` / `qq` |
+| `gameAvatarUrl` | string \| null | 营地头像 URL |
 | `currentRank` | string \| null | 当前段位名 |
 | `currentStars` | number | 当前星数 |
 | `rankScore` | number | 排位评分（0–110） |
+| `peakRating` | number | 巅峰评分（0–110） |
 | `peakScore` | number | 巅峰分（巅峰赛积分） |
 | `seasonGames` | number | 本赛季排位场次（来自营地赛季页） |
 | `seasonWins` | number | 本赛季排位胜场 |
@@ -43,6 +45,7 @@
 | `lastSyncAt` | string \| null | 最近同步时间 |
 | `lastSyncError` | string \| null | 最近同步错误 |
 | `queryCount` | number | 查询次数 |
+| `likeCount` | number | 点赞总数 |
 
 ### `matches` — 对局列表（当前筛选 + 分页）
 
@@ -68,19 +71,35 @@
 | `stars` | number \| null | 对局时星数 |
 | `rankScore` | number \| null | 对局时排位换算分 |
 | `peakScore` | number \| null | 对局后巅峰分 |
+| `peakDelta` | number \| null | 本场巅峰分变化 |
 | `rankDelta` | number \| null | 段位变动 |
 | `mvp` | boolean | 是否 MVP |
 | `gold` | boolean | 是否金牌 |
+| `medal` | string \| null | 奖牌文案，如 `银牌打野` / `顶级中路` |
+| `medalIcon` | string \| null | 官方奖牌图标 URL |
+| `mvpType` | string \| null | `mvp` / `svp` |
+| `mvpIcon` | string \| null | 官方 MVP/SVP 图标 URL |
+| `side` | string \| null | 阵营：`blue` / `red` |
 | `economy` | number \| null | 经济 |
-| `damage` | number \| null | 伤害 |
-| `rawJson` | string \| null | 上游原始 JSON |
+| `economyPct` | number \| null | 经济占本队比例（0–100） |
+| `damage` | number \| null | 输出 |
+| `damagePct` | number \| null | 输出占本队比例（0–100） |
+| `takenDamage` | number \| null | 承伤 |
+| `takenDamagePct` | number \| null | 承伤占本队比例（0–100） |
+| `joinPct` | number \| null | 参团率（0–100） |
+| `combatPower` | number \| null | 对局时该英雄战力 |
+| `equips` | array \| null | 出装列表 `[{ equipId, equipIcon, equipName }]` |
 | `createdAt` | string | 入库时间 |
 
-### 分页与筛选元数据
+### 分页、筛选与聚合元数据
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `total` | number | 当前筛选条件下对局总数 |
+| `wins` | number | 当前筛选条件下胜场数 |
+| `matchWinRate` | number | 当前筛选条件下胜率（%） |
+| `matchAvgKda` | number | 当前筛选条件下平均 KDA |
+| `matchAvgScore` | number | 当前筛选条件下平均评分 |
 | `page` | number | 当前页 |
 | `pageSize` | number | 每页条数（固定 20） |
 | `cooldown` | number | 强制刷新冷却秒数 |
@@ -91,22 +110,21 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | string | 记录 ID |
-| `playerId` | string | 玩家 ID |
-| `heroId` | string \| null | 英雄 ID |
 | `heroName` | string | 英雄名 |
 | `heroIcon` | string \| null | 英雄头像 URL |
-| `combatPower` | number | 英雄战力 |
+| `combatPower` | number \| null | 英雄战力（>0 时返回，否则 null） |
 | `games` | number | 场次 |
 | `wins` | number | 胜场 |
-| `kills` | number | 总击杀 |
-| `deaths` | number | 总死亡 |
-| `assists` | number | 总助攻 |
-| `totalScore` | number | 评分合计 |
-| `updatedAt` | string | 更新时间 |
 | `winRate` | number | 胜率（%，计算字段） |
 | `avgKda` | number | 平均 KDA（计算字段） |
+| `avgKills` | number | 场均击杀 |
+| `avgDeaths` | number | 场均死亡 |
+| `avgAssists` | number | 场均助攻 |
 | `avgScore` | number | 平均评分（计算字段） |
+| `avgEconomyPerMin` | number \| null | 分均经济 |
+| `avgDamage` | number \| null | 场均输出 |
+| `avgTakenDamage` | number \| null | 场均承伤 |
+| `avgJoinPct` | number \| null | 平均参团率（%） |
 
 ### `rankSeries` — 排位分曲线点
 
@@ -132,10 +150,34 @@
 | `result` | string | 胜负 |
 | `hero` | string | 英雄名 |
 
+### `syncStatus` — 同步状态
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | string | `idle` / `running` / `success` / `failed` |
+| `message` | string \| undefined | 同步进度或错误信息 |
+| `pulled` | number \| undefined | 已拉取对局数 |
+
+---
+
+## 排行榜接口补充
+
+`GET /api/leaderboard?type=medal&sortBy=total`
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `type` | — | 设为 `medal` 获取奖牌榜 |
+| `sortBy` | `total` | `total` / `top` / `gold` / `silver` / `bronze` |
+| `area` | `all` | 区服筛选 |
+| `limit` / `offset` | `100` / `0` | 分页 |
+
+返回 `rows` 中每项含 `topMedals`、`goldMedals`、`silverMedals`、`bronzeMedals`、`totalMedals`。
+
 ---
 
 ## 说明
 
-- `matches` / `rankSeries` / `peakSeries` 受 `range`、`mode`、`result`、`hero`、`page` 影响；`heroStats` 不受这些筛选影响，始终基于本地全部已同步对局。
+- `matches` / `rankSeries` / `peakSeries` 受 `range`、`mode`、`result`、`side`、`hero`、`page` 影响；`heroStats` 不受这些筛选影响，始终基于本地全部已同步对局。
 - 玩家概况里的 `seasonGames` / `seasonWins` / `winRate` 为赛季维度；`mvpCount` / `goldCount` 来自同步写入的概况字段。
-- 数据库里还有 `gameAvatarUrl`、`peakRating`、`tierScore` 等，**本接口当前未返回**。
+- 本地最多保留 1000 场对局；上游每次同步最多拉取约 100 条，详情字段需后台补全后才可见。
+- 数据库里还有 `tierScore` 等字段，**本接口当前未返回**。

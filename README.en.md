@@ -32,8 +32,8 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 | Page | Description |
 |------|-------------|
 | Home `/` | Look up and sync stats by Camp ID (5–15 digits) |
-| Player `/p/{nickname}` | Rank / peak curves, hero stats (economy / damage / taken / join aggregates), match list; likes (once per browser per day); pollable sync progress |
-| Match `/matches/:id` | Single-match detail: economy / damage / taken damage (with team %), join rate, equips, etc. |
+| Player `/p/{nickname}` | Rank / peak curves, hero stats (economy / damage / taken / join aggregates), paginated match list (up to 1000 stored locally); official MVP/SVP icons and top / gold / silver / bronze medals; likes (once per browser per day); pollable sync progress |
+| Match `/matches/:id` | Single-match detail: economy / damage / taken damage (with team %), join rate, medals, MVP/SVP, equips, etc. |
 | Hero power `/hero-power` | National province / city / county power thresholds by hero and server |
 | Leaderboard `/leaderboard` | Independent rankings (see below) |
 
@@ -45,6 +45,7 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 - **Hero power**: ranked by per-match combat power from battle detail (after detail sync), expandable curve
 - **Win rate / Avg score / KDA**: expandable win-rate curve; avg score & KDA require a minimum game count
 - **Contribution**: economy/min, avg damage / taken / join (only matches with all four fields)
+- **Medals**: counts top / gold / silver / bronze medals from synced matches; sort by total or a single tier
 - **Hero / Activity**: hero-related and activity boards
 
 ### Admin `/admin`
@@ -63,7 +64,7 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 - `camp` mode is two-phase: persist the battle list first, then enrich each match with detail (equips, economy / damage / taken %, join rate, per-match combat power); the UI can refresh as details land
 - In-process auto-sync of stale players (default hourly; can be disabled)
 - Optional HTTP cron: `GET/POST /api/cron/auto-sync` (protect with `CRON_SECRET`)
-- `camp` mode: first sync up to ~8 pages / 100 matches; later incremental merge (cap ~100)
+- `camp` mode: each upstream pull up to ~8 pages / 100 matches; incremental merge with local storage capped at 1000
 
 ---
 
@@ -185,7 +186,7 @@ The in-app hero-power leaderboard and curves prefer per-match `fightPower` from 
 
 ### 4. Leaderboard
 
-Open `/leaderboard` and switch among rating / ranked / peak / hero power / win rate / avg score / KDA / contribution, etc. Some boards support expandable history curves. The contribution board can sort by damage, taken damage, join rate, or economy/min.
+Open `/leaderboard` and switch among rating / ranked / peak / hero power / win rate / avg score / KDA / contribution / medals, etc. Some boards support expandable history curves. The contribution board can sort by damage, taken damage, join rate, or economy/min. The medal board can sort by total or by top / gold / silver / bronze tier alone.
 
 ### 5. Admin
 
