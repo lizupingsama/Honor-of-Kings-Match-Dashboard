@@ -3,14 +3,28 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { OverviewBar } from "@/components/overview-bar";
-import { RankChart } from "@/components/rank-chart";
-import { ScoreTrendChart } from "@/components/score-trend-chart";
 import { HeroGrid } from "@/components/hero-grid";
 import { MatchTable } from "@/components/match-table";
 import { PlayerLikeButton } from "@/components/player-like-button";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { apiFetch } from "@/lib/client-fetch";
+
+// recharts 体积大，按需加载，避免打进首屏 bundle
+const chartLoading = () => (
+  <div className="flex h-full min-h-24 items-center justify-center text-xs text-zinc-500">
+    图表加载中…
+  </div>
+);
+const RankChart = dynamic(
+  () => import("@/components/rank-chart").then((mod) => mod.RankChart),
+  { ssr: false, loading: chartLoading },
+);
+const ScoreTrendChart = dynamic(
+  () => import("@/components/score-trend-chart").then((mod) => mod.ScoreTrendChart),
+  { ssr: false, loading: chartLoading },
+);
 
 type DashData = {
   player: {

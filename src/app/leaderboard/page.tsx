@@ -3,12 +3,27 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { formatRankLabel } from "@/lib/rank";
-import { ScoreTrendChart, type TrendPoint } from "@/components/score-trend-chart";
-import { RankChart } from "@/components/rank-chart";
+import type { TrendPoint } from "@/components/score-trend-chart";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { apiFetch } from "@/lib/client-fetch";
 import { fmtK } from "@/lib/format";
+
+// recharts 体积大且曲线要点击展开才显示，按需加载
+const chartLoading = () => (
+  <div className="flex h-full min-h-24 items-center justify-center text-xs text-zinc-500">
+    图表加载中…
+  </div>
+);
+const RankChart = dynamic(
+  () => import("@/components/rank-chart").then((mod) => mod.RankChart),
+  { ssr: false, loading: chartLoading },
+);
+const ScoreTrendChart = dynamic(
+  () => import("@/components/score-trend-chart").then((mod) => mod.ScoreTrendChart),
+  { ssr: false, loading: chartLoading },
+);
 
 type BoardType =
   | "score"

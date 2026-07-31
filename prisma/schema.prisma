@@ -50,6 +50,8 @@ model Player {
   @@index([peakRating])
   @@index([peakScore])
   @@index([lastSyncAt])
+  @@index([area])
+  @@index([seasonGames])
 }
 
 /// 玩家点赞：同一浏览器（clientKey）对同一玩家每天最多一次
@@ -171,8 +173,10 @@ model Match {
 
   @@unique([playerId, externalId])
   @@index([playerId, playedAt])
+  @@index([playerId, mode])
   @@index([heroName])
   @@index([side])
+  @@index([medal])
 }
 
 model HeroStat {
@@ -219,4 +223,7 @@ model SyncJob {
   pulled     Int       @default(0)
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
+
+  @@index([playerId, startedAt])
+  @@index([status])
 }

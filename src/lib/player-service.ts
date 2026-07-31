@@ -163,7 +163,6 @@ export async function recomputeHeroStats(playerId: string) {
     map.set(m.heroName, cur);
   }
 
-  await prisma.heroStat.deleteMany({ where: { playerId } });
   const rows = [...map.entries()].map(([heroName, s]) => ({
     playerId,
     heroName,
@@ -215,60 +214,59 @@ export async function recomputeHeroStats(playerId: string) {
     }
   }
 
-  if (rows.length) {
-    await prisma.heroStat.createMany({ data: rows });
-  }
+  // 删除与重建放在同一事务，避免中途失败丢失整份英雄统计
+  await prisma.$transaction([
+    prisma.heroStat.deleteMany({ where: { playerId } }),
+    ...(rows.length ? [prisma.heroStat.createMany({ data: rows })] : []),
+  ]);
 }
 
 /** 用对局战力重建 sync 来源的英雄战力历史（保留手动录入） */
 async function refreshHeroPowerHistoryFromMatches(playerId: string) {
-  const groups = await prisma.match.groupBy({
-    by: ["heroName"],
+  const matches = await prisma.match.findMany({
     where: { playerId, combatPower: { gt: 0 } },
+    orderBy: { playedAt: "asc" },
+    select: { heroName: true, combatPower: true, playedAt: true, heroId: true },
   });
 
-  for (const { heroName } of groups) {
-    const matches = await prisma.match.findMany({
-      where: { playerId, heroName, combatPower: { gt: 0 } },
-      orderBy: { playedAt: "asc" },
-      select: { combatPower: true, playedAt: true, heroId: true },
+  const prevByHero = new Map<string, number>();
+  const data: Array<{
+    playerId: string;
+    heroName: string;
+    heroId?: string;
+    combatPower: number;
+    recordedAt: Date;
+    source: "sync";
+  }> = [];
+  for (const m of matches) {
+    if (m.combatPower == null || m.combatPower === prevByHero.get(m.heroName)) continue;
+    prevByHero.set(m.heroName, m.combatPower);
+    data.push({
+      playerId,
+      heroName: m.heroName,
+      heroId: m.heroId ?? undefined,
+      combatPower: m.combatPower,
+      recordedAt: m.playedAt,
+      source: "sync",
     });
-
-    let prev: number | null = null;
-    const data: Array<{
-      playerId: string;
-      heroName: string;
-      heroId?: string;
-      combatPower: number;
-      recordedAt: Date;
-      source: "sync";
-    }> = [];
-    for (const m of matches) {
-      if (m.combatPower == null || m.combatPower === prev) continue;
-      prev = m.combatPower;
-      data.push({
-        playerId,
-        heroName,
-        heroId: m.heroId ?? undefined,
-        combatPower: m.combatPower,
-        recordedAt: m.playedAt,
-        source: "sync",
-      });
-    }
-
-    await prisma.heroPowerHistory.deleteMany({
-      where: { playerId, heroName, source: "sync" },
-    });
-    if (data.length) {
-      await prisma.heroPowerHistory.createMany({ data });
-    }
   }
+
+  // 只重建当前仍有战力对局的英雄，其余英雄的历史保留（与逐英雄重建的旧行为一致）
+  const heroNames = [...prevByHero.keys()];
+  if (!heroNames.length) return;
+  await prisma.$transaction([
+    prisma.heroPowerHistory.deleteMany({
+      where: { playerId, source: "sync", heroName: { in: heroNames } },
+    }),
+    ...(data.length ? [prisma.heroPowerHistory.createMany({ data })] : []),
+  ]);
 }
 
 async function persistMatchDetailUpdates(
   playerId: string,
   matches: NormalizedMatch[],
 ) {
+  const ops = [];
   for (const m of matches) {
     const hasDetail =
       (m.equips && m.equips.length > 0) ||
@@ -279,21 +277,24 @@ async function persistMatchDetailUpdates(
       m.combatPower != null;
     if (!hasDetail) continue;
 
-    await prisma.match.updateMany({
-      where: { playerId, externalId: m.externalId },
-      data: {
-        ...(m.economy != null ? { economy: m.economy } : {}),
-        ...(m.economyPct != null ? { economyPct: m.economyPct } : {}),
-        ...(m.damage != null ? { damage: m.damage } : {}),
-        ...(m.damagePct != null ? { damagePct: m.damagePct } : {}),
-        ...(m.takenDamage != null ? { takenDamage: m.takenDamage } : {}),
-        ...(m.takenDamagePct != null ? { takenDamagePct: m.takenDamagePct } : {}),
-        ...(m.joinPct != null ? { joinPct: m.joinPct } : {}),
-        ...(m.combatPower != null ? { combatPower: m.combatPower } : {}),
-        ...(m.equips?.length ? { equipsJson: JSON.stringify(m.equips) } : {}),
-      },
-    });
+    ops.push(
+      prisma.match.updateMany({
+        where: { playerId, externalId: m.externalId },
+        data: {
+          ...(m.economy != null ? { economy: m.economy } : {}),
+          ...(m.economyPct != null ? { economyPct: m.economyPct } : {}),
+          ...(m.damage != null ? { damage: m.damage } : {}),
+          ...(m.damagePct != null ? { damagePct: m.damagePct } : {}),
+          ...(m.takenDamage != null ? { takenDamage: m.takenDamage } : {}),
+          ...(m.takenDamagePct != null ? { takenDamagePct: m.takenDamagePct } : {}),
+          ...(m.joinPct != null ? { joinPct: m.joinPct } : {}),
+          ...(m.combatPower != null ? { combatPower: m.combatPower } : {}),
+          ...(m.equips?.length ? { equipsJson: JSON.stringify(m.equips) } : {}),
+        },
+      }),
+    );
   }
+  if (ops.length) await prisma.$transaction(ops);
 }
 
 async function getSyncStatusForPlayer(playerId: string): Promise<SyncStatus> {
@@ -354,12 +355,12 @@ async function persistFetchResult(
     },
   });
 
-  let pulled = 0;
-  for (const m of result.matches) {
+  // 单条 upsert 逐场往返太慢（一次同步 80–160 场），统一放进一个事务批量提交
+  const upserts = result.matches.map((m) => {
     const mRankScore =
       m.rankName != null ? parseRankScore(m.rankName, m.stars ?? 0) : null;
 
-    await prisma.match.upsert({
+    return prisma.match.upsert({
       where: {
         playerId_externalId: {
           playerId,
@@ -443,8 +444,9 @@ async function persistFetchResult(
         rawJson: m.rawJson,
       },
     });
-    pulled++;
-  }
+  });
+  if (upserts.length) await prisma.$transaction(upserts);
+  const pulled = upserts.length;
 
   const latestPeakMatch = await prisma.match.findFirst({
     where: { playerId, mode: "peak", peakScore: { not: null } },
@@ -527,17 +529,23 @@ async function recomputeRankDeltas(playerId: string) {
   const ranked = await prisma.match.findMany({
     where: { playerId, mode: "ranked", rankScore: { not: null } },
     orderBy: { playedAt: "asc" },
-    select: { id: true, rankScore: true },
+    select: { id: true, rankScore: true, rankDelta: true },
   });
 
+  // 只更新 delta 有变化的行，并在一个事务里批量提交（历史对局的 delta 通常已正确）
+  const ops = [];
   for (let i = 0; i < ranked.length; i++) {
     const delta =
       i === 0 ? null : (ranked[i].rankScore as number) - (ranked[i - 1].rankScore as number);
-    await prisma.match.update({
-      where: { id: ranked[i].id },
-      data: { rankDelta: delta },
-    });
+    if (ranked[i].rankDelta === delta) continue;
+    ops.push(
+      prisma.match.update({
+        where: { id: ranked[i].id },
+        data: { rankDelta: delta },
+      }),
+    );
   }
+  if (ops.length) await prisma.$transaction(ops);
 }
 
 /**
@@ -939,6 +947,8 @@ export async function getPlayerDashboard(
       orderBy: { playedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
+      // rawJson 每条可达数 KB 且前端不用，跳过读取
+      omit: { rawJson: true },
     }),
     prisma.match.findMany({
       where: {
@@ -1013,7 +1023,7 @@ export async function getPlayerDashboard(
       queryCount: player.queryCount,
       likeCount,
     },
-    matches: matches.map(({ equipsJson, rawJson: _rawJson, ...m }) => ({
+    matches: matches.map(({ equipsJson, ...m }) => ({
       ...m,
       equips: parseEquipsJson(equipsJson),
     })),

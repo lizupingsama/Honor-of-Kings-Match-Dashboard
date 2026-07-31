@@ -3,9 +3,15 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { format } from "date-fns";
-import { ScoreTrendChart } from "@/components/score-trend-chart";
 import { apiFetch } from "@/lib/client-fetch";
+
+// recharts 体积大，按需加载
+const ScoreTrendChart = dynamic(
+  () => import("@/components/score-trend-chart").then((mod) => mod.ScoreTrendChart),
+  { ssr: false },
+);
 
 type History = {
   id: string;
