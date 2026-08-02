@@ -10,6 +10,7 @@ import {
   getContributionLeaderboard,
   getHeroLeaderboard,
   getMedalLeaderboard,
+  getEquipmentLeaderboard,
   getActiveLeaderboard,
   getMinGames,
   type HeroSortBy,
@@ -18,6 +19,7 @@ import {
   type ContributionSortBy,
   type MedalSortBy,
 } from "@/lib/leaderboard";
+import { isEquipmentBoardCategory } from "@/lib/equipment";
 import {
   getPlayerScoreSeries,
   getTierScoreSeries,
@@ -43,6 +45,7 @@ const KNOWN_TYPES = new Set([
   "contribution",
   "hero",
   "medal",
+  "equipment",
   "active",
 ]);
 
@@ -60,6 +63,10 @@ export async function GET(req: Request) {
       | "combatPower"
       | "tierScore";
     const scoreMode = (searchParams.get("scoreMode") || "ranked") as "ranked" | "peak";
+    const equipmentCategoryRaw = searchParams.get("category") || "all";
+    const equipmentCategory = isEquipmentBoardCategory(equipmentCategoryRaw)
+      ? equipmentCategoryRaw
+      : "all";
 
     if (type === "series") {
       if (!nickname) return jsonError("请指定玩家", 400);
@@ -89,7 +96,17 @@ export async function GET(req: Request) {
     }
 
     const sortRaw = searchParams.get("sortBy") || "";
-    const cacheKey = ["lb", type, area, heroName, limit, offset, sortRaw, scoreMode].join("|");
+    const cacheKey = [
+      "lb",
+      type,
+      area,
+      heroName,
+      limit,
+      offset,
+      sortRaw,
+      scoreMode,
+      equipmentCategory,
+    ].join("|");
     const payload = await cached(cacheKey, LEADERBOARD_CACHE_TTL_MS, async (): Promise<Record<string, unknown>> => {
       if (type === "score") {
         if (scoreMode === "peak") {
@@ -176,6 +193,15 @@ export async function GET(req: Request) {
           : "total") as MedalSortBy;
         const rows = await getMedalLeaderboard({ area, limit, offset, sortBy });
         return { type, rows, sortBy };
+      }
+      if (type === "equipment") {
+        const payload = await getEquipmentLeaderboard({
+          area,
+          category: equipmentCategory,
+          limit,
+          offset,
+        });
+        return { type, category: equipmentCategory, ...payload };
       }
       // type === "active"（KNOWN_TYPES 已校验）
       const rows = await getActiveLeaderboard({ area, limit });

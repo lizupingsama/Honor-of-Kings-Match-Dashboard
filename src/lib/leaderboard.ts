@@ -1,4 +1,10 @@
 import { prisma } from "./db";
+import {
+  getFinalEquipmentMeta,
+  type EquipmentBoardCategory,
+  type EquipmentCategory,
+} from "./equipment";
+import { parseEquipsJson } from "./match-equips";
 
 const MIN_GAMES = Number(process.env.LEADERBOARD_MIN_GAMES || "10") || 10;
 
@@ -621,6 +627,10 @@ export async function getHeroLeaderboard(opts: {
 
 export type MedalSortBy = "total" | "top" | "gold" | "silver" | "bronze";
 
+function percentOf(part: number, total: number) {
+  return total ? Math.round((part / total) * 1000) / 10 : 0;
+}
+
 /**
  * 奖牌榜：按本地已同步对局中的 顶级/金/银/铜牌 计数。
  * total = 四种牌子数量之和。
@@ -750,6 +760,107 @@ export async function getMedalLeaderboard(opts?: {
       };
     })
     .filter((row): row is NonNullable<typeof row> => row != null);
+}
+
+export type EquipmentLeaderboardRow = {
+  rank: number;
+  equipId: number;
+  equipName: string;
+  equipIcon?: string | null;
+  category: EquipmentCategory;
+  categoryLabel: string;
+  appearances: number;
+  appearanceRate: number;
+  wins: number;
+  winRate: number;
+};
+
+export async function getEquipmentLeaderboard(opts?: {
+  area?: string;
+  category?: EquipmentBoardCategory;
+  limit?: number;
+  offset?: number;
+}) {
+  const category = opts?.category ?? "all";
+  const limit = opts?.limit ?? 100;
+  const offset = opts?.offset ?? 0;
+
+  const matches = await prisma.match.findMany({
+    where: {
+      equipsJson: { not: null },
+      player: {
+        lastSyncAt: { not: null },
+        ...(opts?.area && opts.area !== "all" ? { area: opts.area } : {}),
+      },
+    },
+    select: {
+      result: true,
+      equipsJson: true,
+    },
+  });
+
+  const totalMatches = matches.length;
+  const byName = new Map<
+    string,
+    {
+      equipId: number;
+      equipName: string;
+      equipIcon?: string | null;
+      category: EquipmentCategory;
+      categoryLabel: string;
+      appearances: number;
+      wins: number;
+    }
+  >();
+
+  for (const match of matches) {
+    const seenInMatch = new Set<string>();
+    for (const equip of parseEquipsJson(match.equipsJson)) {
+      const meta = getFinalEquipmentMeta(equip);
+      if (!meta) continue;
+      if (category !== "all" && meta.category !== category) continue;
+      const key = equip.equipName.trim();
+      if (!key || seenInMatch.has(key)) continue;
+      seenInMatch.add(key);
+      const current =
+        byName.get(key) ??
+        {
+          equipId: equip.equipId,
+          equipName: key,
+          equipIcon: equip.equipIcon,
+          category: meta.category,
+          categoryLabel: meta.label,
+          appearances: 0,
+          wins: 0,
+        };
+      current.appearances += 1;
+      if (match.result === "win") current.wins += 1;
+      if (!current.equipIcon && equip.equipIcon) current.equipIcon = equip.equipIcon;
+      byName.set(key, current);
+    }
+  }
+
+  const rows = [...byName.values()]
+    .map((row) => ({
+      ...row,
+      appearanceRate: percentOf(row.appearances, totalMatches),
+      winRate: percentOf(row.wins, row.appearances),
+    }))
+    .sort(
+      (a, b) =>
+        b.appearances - a.appearances ||
+        b.appearanceRate - a.appearanceRate ||
+        b.winRate - a.winRate ||
+        a.equipName.localeCompare(b.equipName, "zh-CN"),
+    );
+
+  return {
+    totalMatches,
+    rows: rows.slice(offset, offset + limit).map((row, i) => ({
+      ...row,
+      rank: offset + i + 1,
+    })),
+  };
 }
 
 export async function getActiveLeaderboard(opts?: {

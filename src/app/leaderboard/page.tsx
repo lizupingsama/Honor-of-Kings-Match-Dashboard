@@ -35,6 +35,7 @@ type BoardType =
   | "kda"
   | "contribution"
   | "medal"
+  | "equipment"
   | "hero"
   | "active";
 type ScoreMode = "ranked" | "peak";
@@ -43,6 +44,7 @@ type WinRateSortBy = "winRate" | "wins";
 type KdaSortBy = "kda" | "kills" | "deaths" | "assists";
 type ContributionSortBy = "damage" | "taken" | "join" | "economy";
 type MedalSortBy = "total" | "top" | "gold" | "silver" | "bronze";
+type EquipmentCategory = "all" | "magic" | "defense" | "physical";
 type ChartMetric = "rankScore" | "peakRating" | "peakScore" | "combatPower" | "tierScore" | "winRate";
 
 type LeaderboardViewState = {
@@ -53,6 +55,7 @@ type LeaderboardViewState = {
   kdaSortBy: KdaSortBy;
   contributionSortBy: ContributionSortBy;
   medalSortBy: MedalSortBy;
+  equipmentCategory: EquipmentCategory;
   showExtraBoards: boolean;
   area: string;
   hero: string;
@@ -108,6 +111,13 @@ type Row = {
   silverMedals?: number;
   bronzeMedals?: number;
   totalMedals?: number;
+  equipId?: number;
+  equipName?: string;
+  equipIcon?: string | null;
+  categoryLabel?: string;
+  appearances?: number;
+  appearanceRate?: number;
+  wins?: number;
   area?: string;
 };
 
@@ -121,6 +131,7 @@ export default function LeaderboardPage() {
   const [contributionSortBy, setContributionSortBy] =
     useState<ContributionSortBy>("damage");
   const [medalSortBy, setMedalSortBy] = useState<MedalSortBy>("total");
+  const [equipmentCategory, setEquipmentCategory] = useState<EquipmentCategory>("all");
   const [showExtraBoards, setShowExtraBoards] = useState(false);
   const [area, setArea] = useState("all");
   const [hero, setHero] = useState("李白");
@@ -166,6 +177,9 @@ export default function LeaderboardPage() {
           setContributionSortBy(storedView.contributionSortBy);
         }
         if (storedView.medalSortBy) setMedalSortBy(storedView.medalSortBy);
+        if (storedView.equipmentCategory) {
+          setEquipmentCategory(storedView.equipmentCategory);
+        }
         if (typeof storedView.showExtraBoards === "boolean") {
           setShowExtraBoards(storedView.showExtraBoards);
         }
@@ -215,6 +229,7 @@ export default function LeaderboardPage() {
     if (type === "kda") qs.set("sortBy", kdaSortBy);
     if (type === "contribution") qs.set("sortBy", contributionSortBy);
     if (type === "medal") qs.set("sortBy", medalSortBy);
+    if (type === "equipment") qs.set("category", equipmentCategory);
     apiFetch(`/api/leaderboard?${qs}`)
       .then((r) => r.json())
       .then((json) => {
@@ -244,6 +259,7 @@ export default function LeaderboardPage() {
     kdaSortBy,
     contributionSortBy,
     medalSortBy,
+    equipmentCategory,
     viewReady,
   ]);
 
@@ -259,6 +275,7 @@ export default function LeaderboardPage() {
         kdaSortBy,
         contributionSortBy,
         medalSortBy,
+        equipmentCategory,
         showExtraBoards,
         area,
         hero,
@@ -272,6 +289,7 @@ export default function LeaderboardPage() {
     kdaSortBy,
     contributionSortBy,
     medalSortBy,
+    equipmentCategory,
     showExtraBoards,
     area,
     hero,
@@ -386,7 +404,8 @@ export default function LeaderboardPage() {
         <p className="mt-1 text-sm text-[var(--muted)]">
           排位（段位星数）、巅峰（巅峰分数）相互独立。胜率榜 / 均分榜 / KDA
           榜 / 贡献榜需至少 {minGames} 场；奖牌榜按本地已同步对局统计，有奖牌即可上榜；英雄榜按本地已同步对局统计，满 1
-          场即可上榜。英雄战力榜来自对局详情中的战力，同步详情后可上榜并查看曲线。
+          场即可上榜。装备榜只统计最终合成的大装备，出场率按有出装数据的对局数计算。
+          英雄战力榜来自对局详情中的战力，同步详情后可上榜并查看曲线。
         </p>
       </div>
 
@@ -400,6 +419,7 @@ export default function LeaderboardPage() {
             ["kda", "KDA榜"],
             ["contribution", "贡献榜"],
             ["medal", "奖牌榜"],
+            ["equipment", "装备榜"],
             ["hero", "英雄榜"],
             ["active", "活跃榜"],
           ] as const
@@ -544,12 +564,32 @@ export default function LeaderboardPage() {
             <option value="bronze">铜牌</option>
           </select>
         )}
+        {type === "equipment" && (
+          <select
+            className="input !w-auto max-sm:flex-1"
+            value={equipmentCategory}
+            onChange={(e) => setEquipmentCategory(e.target.value as EquipmentCategory)}
+            title="装备分类"
+          >
+            <option value="all">总榜</option>
+            <option value="magic">法装</option>
+            <option value="defense">防装</option>
+            <option value="physical">物攻装</option>
+          </select>
+        )}
       </div>
 
       {type === "medal" && (
         <p className="text-xs text-[var(--muted)]">
           奖牌榜按本地已同步对局中的奖牌文案统计，总奖牌 = 顶级 + 金牌 + 银牌
           + 铜牌。
+        </p>
+      )}
+
+      {type === "equipment" && (
+        <p className="text-xs text-[var(--muted)]">
+          装备榜解析每场最终出装，同一场同一装备只计 1 次；铁剑、大棒、陨星等中间件不会计入。
+          总榜包含鞋子、打野装和辅助装，分类榜只展示法装 / 防装 / 物攻装。
         </p>
       )}
 
@@ -703,6 +743,53 @@ export default function LeaderboardPage() {
                     ],
                   );
                 }
+                if (type === "equipment") {
+                  return (
+                    <div
+                      key={`mobile-equipment-${row.rank}-${row.equipName}`}
+                      className="rounded-2xl border border-[var(--line)] bg-black/15 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          {row.equipIcon ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={row.equipIcon}
+                              alt={row.equipName || "装备"}
+                              className="h-11 w-11 shrink-0 rounded-lg border border-[var(--line)] bg-black/30 object-cover"
+                            />
+                          ) : (
+                            <div className="h-11 w-11 shrink-0 rounded-lg border border-[var(--line)] bg-black/30" />
+                          )}
+                          <div className="min-w-0">
+                            <div className="text-sm text-[var(--gold)]">#{row.rank}</div>
+                            <div className="truncate text-lg font-semibold text-[var(--gold-bright)]">
+                              {row.equipName}
+                            </div>
+                            <div className="mt-1 text-xs text-[var(--muted)]">
+                              {row.categoryLabel}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        {[
+                          ["出场次数", row.appearances ?? 0],
+                          ["出场率", `${row.appearanceRate ?? 0}%`],
+                          ["胜场", row.wins ?? 0],
+                          ["胜率", `${row.winRate ?? 0}%`],
+                        ].map(([label, value]) => (
+                          <div key={label} className="min-w-0 rounded-xl bg-black/20 p-3">
+                            <div className="text-xs text-[var(--muted)]">{label}</div>
+                            <div className="mt-1 break-words font-medium text-[var(--text)]">
+                              {value}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
 
                 return (
                   <div
@@ -780,6 +867,52 @@ export default function LeaderboardPage() {
                 );
               })}
             </div>
+            {type === "equipment" ? (
+              <table className="table max-sm:hidden">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>装备</th>
+                    <th>分类</th>
+                    <th>出场次数</th>
+                    <th>出场率</th>
+                    <th>胜场</th>
+                    <th>胜率</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={`equipment-${row.rank}-${row.equipName}`}>
+                      <td className="text-[var(--gold)]">{row.rank}</td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          {row.equipIcon ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={row.equipIcon}
+                              alt={row.equipName || "装备"}
+                              className="h-8 w-8 shrink-0 rounded-lg border border-[var(--line)] bg-black/30 object-cover"
+                            />
+                          ) : (
+                            <div className="h-8 w-8 shrink-0 rounded-lg border border-[var(--line)] bg-black/30" />
+                          )}
+                          <span className="font-medium text-[var(--gold-bright)]">
+                            {row.equipName}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="text-[var(--muted)]">{row.categoryLabel}</td>
+                      <td>{row.appearances ?? 0}</td>
+                      <td className="font-medium text-[var(--gold-bright)]">
+                        {row.appearanceRate ?? 0}%
+                      </td>
+                      <td>{row.wins ?? 0}</td>
+                      <td>{row.winRate ?? 0}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
             <table className="table max-sm:hidden">
             <thead>
               <tr>
@@ -1077,6 +1210,7 @@ export default function LeaderboardPage() {
               })}
             </tbody>
           </table>
+            )}
           </>
         )}
       </div>
