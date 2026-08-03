@@ -15,6 +15,7 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
+- [Security](#security)
 - [Usage](#usage)
 - [Deployment](#deployment)
 - [API Overview](#api-overview)
@@ -157,6 +158,15 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `AUTO_SYNC_PLAYER_DELAY_SECONDS` | `5` | Delay between players during auto-sync |
 | `LEADERBOARD_MIN_GAMES` | `10` | Minimum games for leaderboard eligibility |
 | `CRON_SECRET` | (empty) | If set, `/api/cron/auto-sync` requires `Authorization: Bearer <secret>` |
+
+---
+
+## Security
+
+- The WeChat `AppID` and RSA public key in `src/lib/camp/wechat-login.ts` are client identifiers / public encryption material. They are not an `AppSecret` and normally cannot authenticate an account by themselves.
+- `data/camp-auth.json`, `.env`, `CRON_SECRET`, `WZRY_API_KEY`, admin passwords, and Camp login tokens are sensitive. Never commit or paste them into public issues.
+- If GitHub Secret Scanning raises an alert, rotate or revoke the real credential at the relevant provider first, then review access logs. Deleting only the current file does not remove values from Git history.
+- Production deployments should use the platform's secret manager or environment variables, with separate random values for `ADMIN_PASSWORD`, `ADMIN_SECRET`, and `CRON_SECRET`.
 
 ---
 

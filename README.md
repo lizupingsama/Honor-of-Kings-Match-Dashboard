@@ -15,6 +15,7 @@
 - [环境要求](#环境要求)
 - [快速开始](#快速开始)
 - [配置说明](#配置说明)
+- [安全说明](#安全说明)
 - [使用方法](#使用方法)
 - [部署方法](#部署方法)
 - [API 概览](#api-概览)
@@ -157,6 +158,15 @@ npm run dev
 | `AUTO_SYNC_PLAYER_DELAY_SECONDS` | `5` | 每位玩家同步间隔（秒） |
 | `LEADERBOARD_MIN_GAMES` | `10` | 排行榜最低场次门槛 |
 | `CRON_SECRET` | （空） | 若设置，调用 `/api/cron/auto-sync` 需 `Authorization: Bearer <secret>` |
+
+---
+
+## 安全说明
+
+- `src/lib/camp/wechat-login.ts` 中的微信 `AppID` 与 RSA 公钥属于客户端标识 / 加密公钥，不等同于 `AppSecret`，单独公开通常不能直接登录账号。
+- `data/camp-auth.json`、`.env` 以及 `CRON_SECRET`、`WZRY_API_KEY`、管理密码和营地登录 Token 属于敏感信息，禁止提交到 Git 或粘贴到公开 Issue。
+- 如果 GitHub Secret Scanning 报警，先在对应平台轮换 / 撤销真实凭据，再检查访问日志；仅删除当前文件不能清除 Git 历史中的旧值。
+- 生产环境应使用部署平台的 Secret 或环境变量，并设置独立且随机的 `ADMIN_PASSWORD`、`ADMIN_SECRET` 和 `CRON_SECRET`。
 
 ---
 
