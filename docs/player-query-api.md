@@ -195,7 +195,7 @@
 | `totalMatches` | number | 有出装数据的本地对局数，也是出场率的分母 |
 | `rows` | array | 装备排行数据 |
 
-`rows` 中每项包含 `rank`、`equipId`、`equipName`、`equipIcon`、`category`、`categoryLabel`、`appearances`（出场次数）、`appearanceRate`（出场率 %）、`wins`（胜场）和 `winRate`（胜率 %）。结果默认按出场次数降序排列。
+`rows` 中每项包含 `rank`、`equipId`、`equipName`、`equipIcon`、`category`、`categoryLabel`、`appearances`（出场次数）、`appearanceRate`（出场率 %）、`wins`（胜场）、`winRate`（胜率 %），以及最常出该装备的玩家：`topPlayerNickname`、`topPlayerAvatarUrl`、`topPlayerAppearances`（该玩家出装次数；同次数时按昵称排序取前者）。结果默认按出场次数降序排列。
 
 ---
 

@@ -118,6 +118,9 @@ type Row = {
   appearances?: number;
   appearanceRate?: number;
   wins?: number;
+  topPlayerNickname?: string | null;
+  topPlayerAvatarUrl?: string | null;
+  topPlayerAppearances?: number;
   area?: string;
 };
 
@@ -588,7 +591,7 @@ export default function LeaderboardPage() {
 
       {type === "equipment" && (
         <p className="text-xs text-[var(--muted)]">
-          装备榜解析每场最终出装，同一场同一装备只计 1 次；铁剑、大棒、陨星等中间件不会计入。
+          装备榜解析每场最终出装，同一场同一装备只计 1 次；铁剑、大棒、陨星等中间件不会计入。最爱玩家为出该装备次数最多的人。
           总榜包含鞋子、打野装和辅助装，分类榜只展示法装 / 防装 / 物攻装。
         </p>
       )}
@@ -769,6 +772,26 @@ export default function LeaderboardPage() {
                             <div className="mt-1 text-xs text-[var(--muted)]">
                               {row.categoryLabel}
                             </div>
+                            {row.topPlayerNickname && (
+                              <Link
+                                href={`/p/${encodeURIComponent(row.topPlayerNickname)}`}
+                                className="group mt-2 inline-flex min-w-0 max-w-full items-center gap-1.5 text-xs text-[var(--muted)]"
+                                aria-label={`进入最爱出装玩家 ${row.topPlayerNickname} 的主页`}
+                                onClick={rememberLeaderboardPosition}
+                              >
+                                <PlayerAvatar
+                                  src={row.topPlayerAvatarUrl}
+                                  name={row.topPlayerNickname}
+                                  size={18}
+                                />
+                                <span className="truncate group-hover:text-[var(--gold-bright)]">
+                                  最爱：{row.topPlayerNickname}
+                                </span>
+                                <span className="shrink-0 text-[var(--gold)]">
+                                  ×{row.topPlayerAppearances ?? 0}
+                                </span>
+                              </Link>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -878,6 +901,7 @@ export default function LeaderboardPage() {
                     <th>出场率</th>
                     <th>胜场</th>
                     <th>胜率</th>
+                    <th>最爱玩家</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -908,6 +932,28 @@ export default function LeaderboardPage() {
                       </td>
                       <td>{row.wins ?? 0}</td>
                       <td>{row.winRate ?? 0}%</td>
+                      <td>
+                        {row.topPlayerNickname ? (
+                          <Link
+                            href={`/p/${encodeURIComponent(row.topPlayerNickname)}`}
+                            className="group inline-flex min-w-0 max-w-full items-center gap-2 text-[var(--gold-bright)]"
+                            aria-label={`进入最爱出装玩家 ${row.topPlayerNickname} 的主页`}
+                            onClick={rememberLeaderboardPosition}
+                          >
+                            <PlayerAvatar
+                              src={row.topPlayerAvatarUrl}
+                              name={row.topPlayerNickname}
+                              size={24}
+                            />
+                            <span className="truncate">{row.topPlayerNickname}</span>
+                            <span className="shrink-0 text-xs text-[var(--muted)] group-hover:text-[var(--gold)]">
+                              ×{row.topPlayerAppearances ?? 0}
+                            </span>
+                          </Link>
+                        ) : (
+                          <span className="text-[var(--muted)]">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

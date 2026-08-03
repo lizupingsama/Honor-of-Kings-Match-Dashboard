@@ -796,6 +796,13 @@ export async function getEquipmentLeaderboard(opts?: {
     select: {
       result: true,
       equipsJson: true,
+      playerId: true,
+      player: {
+        select: {
+          gameNickname: true,
+          gameAvatarUrl: true,
+        },
+      },
     },
   });
 
@@ -811,6 +818,11 @@ export async function getEquipmentLeaderboard(opts?: {
       appearances: number;
       wins: number;
     }
+  >();
+  /** 装备名 → 玩家出装次数 */
+  const playerCountsByEquip = new Map<
+    string,
+    Map<string, { gameNickname: string; gameAvatarUrl: string | null; appearances: number }>
   >();
 
   for (const match of matches) {
@@ -837,15 +849,57 @@ export async function getEquipmentLeaderboard(opts?: {
       if (match.result === "win") current.wins += 1;
       if (!current.equipIcon && equip.equipIcon) current.equipIcon = equip.equipIcon;
       byName.set(key, current);
+
+      let byPlayer = playerCountsByEquip.get(key);
+      if (!byPlayer) {
+        byPlayer = new Map();
+        playerCountsByEquip.set(key, byPlayer);
+      }
+      const playerStat =
+        byPlayer.get(match.playerId) ??
+        {
+          gameNickname: match.player.gameNickname,
+          gameAvatarUrl: match.player.gameAvatarUrl,
+          appearances: 0,
+        };
+      playerStat.appearances += 1;
+      byPlayer.set(match.playerId, playerStat);
     }
   }
 
+  const pickTopPlayer = (equipName: string) => {
+    const byPlayer = playerCountsByEquip.get(equipName);
+    if (!byPlayer || byPlayer.size === 0) return null;
+    let top: {
+      gameNickname: string;
+      gameAvatarUrl: string | null;
+      appearances: number;
+    } | null = null;
+    for (const stat of byPlayer.values()) {
+      if (
+        !top ||
+        stat.appearances > top.appearances ||
+        (stat.appearances === top.appearances &&
+          stat.gameNickname.localeCompare(top.gameNickname, "zh-CN") < 0)
+      ) {
+        top = stat;
+      }
+    }
+    return top;
+  };
+
   const rows = [...byName.values()]
-    .map((row) => ({
-      ...row,
-      appearanceRate: percentOf(row.appearances, totalMatches),
-      winRate: percentOf(row.wins, row.appearances),
-    }))
+    .map((row) => {
+      const topPlayer = pickTopPlayer(row.equipName);
+      return {
+        ...row,
+        appearanceRate: percentOf(row.appearances, totalMatches),
+        winRate: percentOf(row.wins, row.appearances),
+        topPlayerNickname: topPlayer?.gameNickname ?? null,
+        topPlayerAvatarUrl: topPlayer?.gameAvatarUrl ?? null,
+        topPlayerAppearances: topPlayer?.appearances ?? 0,
+      };
+    })
     .sort(
       (a, b) =>
         b.appearances - a.appearances ||
