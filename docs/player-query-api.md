@@ -175,6 +175,30 @@
 
 ---
 
+## 装备排行榜接口
+
+`GET /api/leaderboard?type=equipment&category=all`
+
+装备榜按本地已同步对局中的最终合成装备统计。每场同一装备只计一次，铁剑、大棒、陨星等中间件不计入；`category=all` 还包含鞋子、打野装和辅助装。
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `type` | — | 设为 `equipment` 获取装备榜 |
+| `category` | `all` | `all` / `physical`（物攻装）/ `magic`（法装）/ `defense`（防装） |
+| `area` | `all` | 区服筛选 |
+| `limit` / `offset` | `100` / `0` | 分页，最多返回 100 条 |
+
+响应包含：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `totalMatches` | number | 有出装数据的本地对局数，也是出场率的分母 |
+| `rows` | array | 装备排行数据 |
+
+`rows` 中每项包含 `rank`、`equipId`、`equipName`、`equipIcon`、`category`、`categoryLabel`、`appearances`（出场次数）、`appearanceRate`（出场率 %）、`wins`（胜场）和 `winRate`（胜率 %）。结果默认按出场次数降序排列。
+
+---
+
 ## 说明
 
 - `matches` / `rankSeries` / `peakSeries` 受 `range`、`mode`、`result`、`side`、`hero`、`page` 影响；`heroStats` 不受这些筛选影响，始终基于本地全部已同步对局。

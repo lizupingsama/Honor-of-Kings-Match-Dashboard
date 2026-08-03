@@ -47,6 +47,7 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 - **Win rate / Avg score / KDA**: expandable win-rate curve; avg score & KDA require a minimum game count
 - **Contribution**: economy/min, avg damage / taken / join (only matches with all four fields)
 - **Medals**: counts top / gold / silver / bronze medals from synced matches; sort by total or a single tier
+- **Equipment**: final-item appearance count, appearance rate, wins, and win rate; supports all, physical, magic, and defense categories
 - **Hero / Activity**: hero-related and activity boards
 
 ### Admin `/admin`
@@ -196,7 +197,9 @@ The in-app hero-power leaderboard and curves prefer per-match `fightPower` from 
 
 ### 4. Leaderboard
 
-Open `/leaderboard` and switch among rating / ranked / peak / hero power / win rate / avg score / KDA / contribution / medals, etc. Some boards support expandable history curves. The contribution board can sort by damage, taken damage, join rate, or economy/min. The medal board can sort by total or by top / gold / silver / bronze tier alone.
+Open `/leaderboard` and switch among rating / ranked / peak / hero power / win rate / avg score / KDA / contribution / medals / equipment, etc. Some boards support expandable history curves. The contribution board can sort by damage, taken damage, join rate, or economy/min. The medal board can sort by total or by top / gold / silver / bronze tier alone. The equipment board supports all, physical, magic, and defense categories.
+
+The equipment board counts only final items from each match. The same item is counted once per match; intermediate components such as Iron Sword, Large Rod, and Meteor are excluded. The all category also includes boots, jungle items, and support items. Appearance rate uses locally synced matches with equipment data as its denominator.
 
 ### 5. Admin
 
@@ -332,6 +335,14 @@ Typical success envelope:
 ```json
 { "ok": true, "data": { } }
 ```
+
+Equipment leaderboard example:
+
+```http
+GET /api/leaderboard?type=equipment&category=physical&area=all&limit=50&offset=0
+```
+
+The response includes `data.totalMatches` (matches with equipment data) and `data.rows`. Each row contains `equipId`, `equipName`, `equipIcon`, `category`, `categoryLabel`, `appearances`, `appearanceRate`, `wins`, and `winRate`.
 
 ---
 
