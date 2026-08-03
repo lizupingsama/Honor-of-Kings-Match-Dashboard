@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { scoreToApproxLabel } from "@/lib/rank";
+import { ScrollableChart } from "@/components/scrollable-chart";
 
 type Point = {
   t: string;
@@ -55,7 +56,7 @@ export function RankChart({ data }: { data: Point[] }) {
   const yMax = dataMax + pad;
 
   return (
-    <div className="h-64 w-full">
+    <ScrollableChart pointCount={chartData.length} height={256}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
           <defs>
@@ -109,6 +110,6 @@ export function RankChart({ data }: { data: Point[] }) {
           />
         </AreaChart>
       </ResponsiveContainer>
-    </div>
+    </ScrollableChart>
   );
 }

@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { scoreToApproxLabel } from "@/lib/rank";
+import { ScrollableChart } from "@/components/scrollable-chart";
 
 export type TrendPoint = {
   t: string;
@@ -65,7 +66,7 @@ export function ScoreTrendChart({
   const gradId = `scoreFill-${metric}-${yAsRankLabel ? "rank" : "num"}`;
 
   return (
-    <div className="w-full" style={{ height }}>
+    <ScrollableChart pointCount={chartData.length} height={height}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <defs>
@@ -122,6 +123,6 @@ export function ScoreTrendChart({
           />
         </AreaChart>
       </ResponsiveContainer>
-    </div>
+    </ScrollableChart>
   );
 }

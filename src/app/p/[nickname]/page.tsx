@@ -123,6 +123,38 @@ type DashData = {
   };
 };
 
+type HeroSort = "games" | "winRate" | "avgScore";
+
+type StoredPlayerView = {
+  range: string;
+  mode: string;
+  result: string;
+  side: string;
+  hero: string;
+  heroSort: HeroSort;
+  matchPage: number;
+  scrollY: number;
+};
+
+type PendingPlayerRestore = {
+  matchPage: number;
+  scrollY: number;
+};
+
+function playerViewKey(nickname: string) {
+  return `wzry:player:${nickname}:view`;
+}
+
+function readStoredPlayerView(nickname: string): StoredPlayerView | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(playerViewKey(nickname));
+    return raw ? (JSON.parse(raw) as StoredPlayerView) : null;
+  } catch {
+    return null;
+  }
+}
+
 function PlayerDashboard() {
   const params = useParams<{ nickname: string }>();
   const router = useRouter();
@@ -132,7 +164,11 @@ function PlayerDashboard() {
   const matchesSentinelRef = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
   const matchPageRef = useRef(1);
+  const pendingRestoreRef = useRef<PendingPlayerRestore | null>(null);
+  const pagesRestoredRef = useRef(false);
 
+  const [viewReady, setViewReady] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [data, setData] = useState<DashData | null>(null);
   const [error, setError] = useState("");
   const [range, setRange] = useState("30");
@@ -140,7 +176,7 @@ function PlayerDashboard() {
   const [result, setResult] = useState("all");
   const [side, setSide] = useState("all");
   const [hero, setHero] = useState("");
-  const [heroSort, setHeroSort] = useState<"games" | "winRate" | "avgScore">("games");
+  const [heroSort, setHeroSort] = useState<HeroSort>("games");
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
   const [matchPage, setMatchPage] = useState(1);
@@ -151,9 +187,58 @@ function PlayerDashboard() {
   matchPageRef.current = matchPage;
 
   useEffect(() => {
+    if (!nickname) return;
+    const stored = readStoredPlayerView(nickname);
+    const urlHero = searchParams.get("hero");
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      pagesRestoredRef.current = false;
+      pendingRestoreRef.current = null;
+      if (stored) {
+        if (stored.range) setRange(stored.range);
+        if (stored.mode) setMode(stored.mode);
+        if (stored.result) setResult(stored.result);
+        if (stored.side) setSide(stored.side);
+        if (stored.heroSort) setHeroSort(stored.heroSort);
+        setHero(urlHero || stored.hero || "");
+        pendingRestoreRef.current = {
+          matchPage: Math.max(1, stored.matchPage || 1),
+          scrollY: Number.isFinite(stored.scrollY) ? stored.scrollY : 0,
+        };
+      } else if (urlHero) {
+        setHero(urlHero);
+      }
+      setViewReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // 仅在进入玩家页时恢复一次；URL hero 变化由下方 effect 同步
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nickname]);
+
+  useEffect(() => {
+    if (!viewReady) return;
     const h = searchParams.get("hero");
     if (h) setHero(h);
-  }, [searchParams]);
+  }, [searchParams, viewReady]);
+
+  function rememberPlayerPosition() {
+    window.sessionStorage.setItem(
+      playerViewKey(nickname),
+      JSON.stringify({
+        range,
+        mode,
+        result,
+        side,
+        hero,
+        heroSort,
+        matchPage,
+        scrollY: window.scrollY,
+      } satisfies StoredPlayerView),
+    );
+  }
 
   function syncHeroInUrl(nextHero: string) {
     const qs = new URLSearchParams(searchParams.toString());
@@ -219,12 +304,47 @@ function PlayerDashboard() {
   );
 
   useEffect(() => {
-    if (nickname) load().catch(() => setError("加载失败"));
-  }, [load, nickname]);
+    if (!viewReady || !nickname) return;
+    let cancelled = false;
+    const pending = pendingRestoreRef.current;
+    const targetPage = pagesRestoredRef.current ? 1 : (pending?.matchPage ?? 1);
+    const needRestore = !pagesRestoredRef.current && pending != null;
+
+    (async () => {
+      if (needRestore) setRestoring(true);
+      try {
+        await load({ page: 1 });
+        if (cancelled) return;
+        for (let page = 2; page <= targetPage; page++) {
+          await load({ page, append: true });
+          if (cancelled) return;
+        }
+        if (!cancelled) pagesRestoredRef.current = true;
+      } catch {
+        if (!cancelled) setError("加载失败");
+      } finally {
+        if (!cancelled && needRestore) setRestoring(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [load, nickname, viewReady]);
+
+  useEffect(() => {
+    const pending = pendingRestoreRef.current;
+    if (!viewReady || !data || restoring || pending == null) return;
+    if (!pagesRestoredRef.current) return;
+    const y = pending.scrollY;
+    pendingRestoreRef.current = null;
+    window.sessionStorage.removeItem(playerViewKey(nickname));
+    requestAnimationFrame(() => window.scrollTo({ top: y }));
+  }, [viewReady, data, data?.matches.length, restoring, nickname]);
 
   useEffect(() => {
     const el = matchesSentinelRef.current;
-    if (!el || !hasMoreMatches) return;
+    if (!el || !hasMoreMatches || restoring) return;
 
     const io = new IntersectionObserver(
       (entries) => {
@@ -242,7 +362,7 @@ function PlayerDashboard() {
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [hasMoreMatches, load]);
+  }, [hasMoreMatches, load, restoring]);
 
   const syncing = data?.syncStatus?.status === "running";
 
@@ -525,7 +645,7 @@ function PlayerDashboard() {
             正在拉取对局列表，请稍候…
           </p>
         ) : (
-          <MatchTable matches={data.matches} />
+          <MatchTable matches={data.matches} onNavigate={rememberPlayerPosition} />
         )}
         {hasMoreMatches ? (
           <div ref={matchesSentinelRef} className="mt-3 py-2 text-center text-xs text-[var(--muted)]">

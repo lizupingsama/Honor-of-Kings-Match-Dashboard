@@ -154,7 +154,13 @@ function HonorBadges({ m }: { m: MatchRow }) {
   );
 }
 
-export function MatchTable({ matches }: { matches: MatchRow[] }) {
+export function MatchTable({
+  matches,
+  onNavigate,
+}: {
+  matches: MatchRow[];
+  onNavigate?: () => void;
+}) {
   if (!matches.length) {
     return (
       <div className="py-8 text-center text-sm text-[var(--muted)]">暂无对局记录</div>
@@ -170,6 +176,7 @@ export function MatchTable({ matches }: { matches: MatchRow[] }) {
           <Link
             key={m.id}
             href={`/matches/${m.id}`}
+            onClick={onNavigate}
             className="block rounded-xl border border-[var(--line)] bg-black/15 px-3 py-2.5 transition hover:border-[var(--gold)]/40 hover:bg-black/25 sm:px-4"
           >
             <div className="flex items-start gap-3">
