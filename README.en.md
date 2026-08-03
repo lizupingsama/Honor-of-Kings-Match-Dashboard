@@ -17,6 +17,7 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 - [Configuration](#configuration)
 - [Security](#security)
 - [Usage](#usage)
+- [Screenshots](#screenshots)
 - [Deployment](#deployment)
 - [API Overview](#api-overview)
 - [Project Structure](#project-structure)
@@ -188,6 +189,18 @@ If auth expires, an admin must re-scan the WeChat QR code at `/admin`.
 - Filter / paginate matches; list and detail show equips, taken damage, join rate, etc. after detail sync
 - Sync progress can be shown while a job is running
 - Like: at most once per browser per player per day
+
+## Screenshots
+
+These screenshots are from the deployed site [lizuping.love/wzry](https://lizuping.love/wzry):
+
+| Home | Leaderboard |
+|------|-------------|
+| ![Home](./public/screenshots/home.png) | ![Leaderboard](./public/screenshots/leaderboard.png) |
+
+| Hero power lookup | Player details |
+|-------------------|----------------|
+| ![Hero power lookup](./public/screenshots/hero-power.png) | ![Player details](./public/screenshots/player.png) |
 
 ### 3. Hero power
 
