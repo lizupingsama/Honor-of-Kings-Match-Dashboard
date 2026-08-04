@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { HeroMeta, PowerQueryResult, PowerZone, RankItem } from "@/lib/hero-power-api";
 import { apiFetch } from "@/lib/client-fetch";
+import { filterHeroesByQuery, resolveHeroQuery } from "@/lib/hero-match";
 
 const ZONES: { value: PowerZone; label: string }[] = [
   { value: "aqq", label: "安卓 QQ" },
@@ -91,15 +92,10 @@ export default function HeroPowerPage() {
   const filteredHeroes = useMemo(() => {
     const byId = new Map(heroes.map((h) => [h.ename, h]));
     const recent = recentIds.map((id) => byId.get(id)).filter((h): h is HeroMeta => Boolean(h));
-    const q = heroQuery.trim().toLowerCase();
+    const q = heroQuery.trim();
 
     if (q) {
-      const matched = heroes.filter(
-        (h) =>
-          h.name.toLowerCase().includes(q) ||
-          h.title.toLowerCase().includes(q) ||
-          h.ename.includes(q),
-      );
+      const matched = filterHeroesByQuery(heroes, q);
       const recentMatched = recent.filter((h) => matched.some((m) => m.ename === h.ename));
       const rest = matched.filter((h) => !recentMatched.some((r) => r.ename === h.ename));
       return [...recentMatched, ...rest].slice(0, 36);
@@ -128,8 +124,22 @@ export default function HeroPowerPage() {
     const name = heroQuery.trim();
     let id = heroId;
     if (!id && name) {
-      const exact = heroes.find((h) => h.name === name);
-      if (exact) id = exact.ename;
+      const resolved = resolveHeroQuery(heroes, name);
+      if (resolved) {
+        id = resolved.ename;
+        setHeroId(resolved.ename);
+        setHeroQuery(resolved.name);
+      } else {
+        const candidates = filterHeroesByQuery(heroes, name);
+        if (candidates.length > 1) {
+          setError(`匹配到 ${candidates.length} 位英雄，请从下方点击选择`);
+          return;
+        }
+        if (candidates.length === 0) {
+          setError("未找到匹配英雄，请检查名称或拼音");
+          return;
+        }
+      }
     }
     if (!id && !name) {
       setError("请选择或输入英雄");
@@ -216,7 +226,7 @@ export default function HeroPowerPage() {
                   setHeroQuery(e.target.value);
                   setHeroId("");
                 }}
-                placeholder="输入名称，如：赵云"
+                placeholder="名称 / 拼音 / 首字母，如：赵云、zy"
                 list="hero-power-datalist"
                 autoComplete="off"
               />

@@ -161,9 +161,9 @@ export default function MatchDetailPage() {
           <div className="text-sm text-[var(--muted)]">出装</div>
           {equips.length ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              {equips.map((eq) => (
+              {equips.map((eq, i) => (
                 <div
-                  key={`${eq.equipId}-${eq.equipName}`}
+                  key={`${i}-${eq.equipId}-${eq.equipName}`}
                   className="flex w-[4.5rem] flex-col items-center gap-1"
                   title={eq.equipName}
                 >

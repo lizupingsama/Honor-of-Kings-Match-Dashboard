@@ -59,11 +59,11 @@ function EquipIcons({ equips }: { equips?: MatchEquipRow[] | null }) {
   if (!equips?.length) return null;
   return (
     <div className="flex items-center gap-1">
-      {equips.map((eq) =>
+      {equips.map((eq, i) =>
         eq.equipIcon ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            key={`${eq.equipId}-${eq.equipName}`}
+            key={`${i}-${eq.equipId}-${eq.equipName}`}
             src={eq.equipIcon}
             alt={eq.equipName}
             title={eq.equipName}
@@ -71,7 +71,7 @@ function EquipIcons({ equips }: { equips?: MatchEquipRow[] | null }) {
           />
         ) : (
           <span
-            key={`${eq.equipId}-${eq.equipName}`}
+            key={`${i}-${eq.equipId}-${eq.equipName}`}
             title={eq.equipName}
             className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/40 text-[8px] text-[var(--muted)] sm:h-7 sm:w-7"
           >

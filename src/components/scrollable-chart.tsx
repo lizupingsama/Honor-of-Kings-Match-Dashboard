@@ -68,7 +68,12 @@ export function ScrollableChart({
       <div className="relative">
         <div
           ref={scrollerRef}
-          className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]"
+          className={
+            needsScroll
+              ? // 必须同时写 overflow-y，否则 overflow-x 会把 overflow-y 算成 auto，桌面端会冒出竖滚动条
+                "overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              : "overflow-hidden"
+          }
           onScroll={() => {
             if (hintVisible) setHintVisible(false);
           }}
