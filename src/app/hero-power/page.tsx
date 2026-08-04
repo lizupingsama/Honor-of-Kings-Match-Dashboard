@@ -136,7 +136,7 @@ export default function HeroPowerPage() {
           return;
         }
         if (candidates.length === 0) {
-          setError("未找到匹配英雄，请检查名称");
+          setError("未找到匹配英雄，请检查名称或拼音");
           return;
         }
       }
@@ -226,7 +226,7 @@ export default function HeroPowerPage() {
                   setHeroQuery(e.target.value);
                   setHeroId("");
                 }}
-                placeholder="名称或部分字，如：赵云、赵"
+                placeholder="名称 / 拼音 / 首字母，如：赵云、zy"
                 list="hero-power-datalist"
                 autoComplete="off"
               />

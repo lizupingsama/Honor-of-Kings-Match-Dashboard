@@ -1,8 +1,12 @@
+import { match as pinyinMatch } from "pinyin-pro";
 import type { HeroMeta } from "@/lib/hero-power-api";
 
-function includesInsensitive(text: string, query: string): boolean {
+function textMatches(text: string, query: string): boolean {
   if (!text || !query) return false;
-  return text.toLowerCase().includes(query.toLowerCase());
+  if (text.toLowerCase().includes(query.toLowerCase())) return true;
+  // 仅对含字母的查询走拼音（如 zy / zhaoyun）
+  if (!/[a-zA-Z]/.test(query)) return false;
+  return pinyinMatch(text, query, { continuous: true, v: true }) != null;
 }
 
 /** 匹配得分：越大越优先；0 表示不匹配 */
@@ -20,9 +24,10 @@ export function scoreHeroMatch(hero: HeroMeta, query: string): number {
   if (name.toLowerCase() === ql) return 90;
   if (name.startsWith(q)) return 80;
   if (name.toLowerCase().startsWith(ql)) return 75;
-  if (name.includes(q) || includesInsensitive(name, q)) return 60;
-  if (title.includes(q) || includesInsensitive(title, q)) return 40;
-  if (ename.includes(q) || includesInsensitive(ename, q)) return 20;
+  if (name.includes(q) || name.toLowerCase().includes(ql)) return 60;
+  if (textMatches(name, q)) return 55;
+  if (title.includes(q) || title.toLowerCase().includes(ql) || textMatches(title, q)) return 40;
+  if (ename.includes(q)) return 20;
   return 0;
 }
 
