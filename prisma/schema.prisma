@@ -214,6 +214,24 @@ model HeroStat {
   @@index([heroName, combatPower])
 }
 
+/// 访客访问记录：proxy 拦截页面请求逐条写入，滚动保留最近 10 万条（见 src/lib/visit-log.ts）
+model Visit {
+  /// 自增主键，同时用于按插入顺序修剪旧记录
+  id        Int      @id @default(autoincrement())
+  /// 真实客户端 IP（从 X-Forwarded-For 提取，见 src/lib/client-ip.ts）
+  ip        String
+  /// 去掉 basePath 与查询串的页面路径，如 /leaderboard
+  path      String
+  userAgent String?
+  referer   String?
+  /// 原始 X-Forwarded-For 链，排查伪造时用
+  xff       String?
+  createdAt DateTime @default(now())
+
+  @@index([ip])
+  @@index([createdAt])
+}
+
 model SyncJob {
   id         String    @id @default(cuid())
   playerId   String

@@ -343,6 +343,9 @@ export default function AdminPage() {
           <button className="btn btn-ghost !py-2" onClick={() => setShowCreate((v) => !v)}>
             {showCreate ? "收起表单" : "新增玩家"}
           </button>
+          <Link className="btn btn-ghost !py-2" href="/admin/visits">
+            IP 统计
+          </Link>
           <button className="btn btn-ghost !py-2" onClick={logout}>
             退出
           </button>
