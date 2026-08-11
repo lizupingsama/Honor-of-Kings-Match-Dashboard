@@ -21,13 +21,32 @@ type PlayerRow = {
   _count: { matches: number; scoreHistories: number; heroStats: number };
 };
 
+type CampAuthAccountStatus = {
+  userId: string;
+  nickname?: string;
+  lastLoginAt?: string;
+  expires?: string;
+  available: boolean;
+  cooledUntil?: string;
+  lastSkipReason?: "rate_limit" | "auth";
+};
+
 type CampAuthStatus = {
   loggedIn: boolean;
+  count?: number;
+  availableCount?: number;
   userId?: string;
   nickname?: string;
   lastLoginAt?: string;
   expires?: string;
+  accounts?: CampAuthAccountStatus[];
 };
+
+function maskCampUserId(userId: string) {
+  if (!userId) return "";
+  if (userId.length <= 6) return "***";
+  return `${userId.slice(0, 3)}***${userId.slice(-3)}`;
+}
 
 function adminAuthUrl() {
   return "/api/admin/auth";
@@ -201,8 +220,29 @@ export default function AdminPage() {
     }
   }
 
+  async function removeCampAccount(userId: string) {
+    if (!confirm("确认移除该营地账号？")) return;
+    setCampLoading(true);
+    try {
+      const res = await apiFetch(
+        `/api/admin/camp-auth?userId=${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
+      );
+      const json = await res.json();
+      if (!json.ok) {
+        setError(json.error || "移除失败");
+        return;
+      }
+      setCampAuth(json.data);
+    } catch {
+      setError("网络错误");
+    } finally {
+      setCampLoading(false);
+    }
+  }
+
   async function clearCampLogin() {
-    if (!confirm("确认清除营地登录态？清除后将无法同步战绩，需重新扫码。")) return;
+    if (!confirm("确认清除全部营地账号？清除后将无法同步战绩，需重新扫码。")) return;
     setCampLoading(true);
     try {
       const res = await apiFetch("/api/admin/camp-auth", { method: "DELETE" });
@@ -211,7 +251,7 @@ export default function AdminPage() {
         setError(json.error || "清除失败");
         return;
       }
-      setCampAuth({ loggedIn: false });
+      setCampAuth(json.data || { loggedIn: false, accounts: [] });
       setQrTaskId(null);
       setQrcodeBase64(null);
       setQrStatus("");
@@ -357,7 +397,7 @@ export default function AdminPage() {
           <div>
             <h2 className="text-lg font-medium text-[var(--gold-bright)]">营地登录</h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              战绩同步依赖王者营地登录态。请用微信扫码登录后，首页即可用营地 ID 查询。
+              可登录多个营地账号。查询遇频控时会自动切换到下一个可用账号。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -366,15 +406,15 @@ export default function AdminPage() {
               onClick={startCampLogin}
               disabled={campLoading}
             >
-              {campAuth?.loggedIn ? "重新扫码" : "微信扫码登录"}
+              {campAuth?.loggedIn ? "添加账号" : "微信扫码登录"}
             </button>
-            {campAuth?.loggedIn && (
+            {(campAuth?.count ?? 0) > 0 && (
               <button
                 className="btn btn-ghost !py-2"
                 onClick={clearCampLogin}
                 disabled={campLoading}
               >
-                清除登录态
+                清除全部
               </button>
             )}
             <button
@@ -388,15 +428,50 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {campAuth?.loggedIn ? (
-          <p className="text-sm text-[var(--muted)]">
-            已登录
-            {campAuth.nickname ? ` · ${campAuth.nickname}` : ""}
-            {campAuth.userId ? ` · ID ${campAuth.userId}` : ""}
-            {campAuth.lastLoginAt
-              ? ` · ${format(new Date(campAuth.lastLoginAt), "yyyy-MM-dd HH:mm")}`
-              : ""}
-          </p>
+        {(campAuth?.accounts?.length ?? 0) > 0 ? (
+          <div className="space-y-2">
+            <p className="text-sm text-[var(--muted)]">
+              已登录 {campAuth?.count ?? 0} 个账号
+              {typeof campAuth?.availableCount === "number"
+                ? ` · 可用 ${campAuth.availableCount}`
+                : ""}
+            </p>
+            <ul className="space-y-2">
+              {(campAuth?.accounts || []).map((acc) => (
+                <li
+                  key={acc.userId}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm"
+                >
+                  <div className="text-[var(--muted)]">
+                    <span className="text-[var(--foreground)]">
+                      {acc.nickname || "未命名账号"}
+                    </span>
+                    {` · ID ${maskCampUserId(acc.userId)}`}
+                    {acc.lastLoginAt
+                      ? ` · ${format(new Date(acc.lastLoginAt), "yyyy-MM-dd HH:mm")}`
+                      : ""}
+                    {!acc.available && acc.cooledUntil
+                      ? ` · 冷却至 ${format(new Date(acc.cooledUntil), "HH:mm:ss")}`
+                      : ""}
+                    {!acc.available && acc.lastSkipReason === "rate_limit"
+                      ? " · 频控"
+                      : ""}
+                    {!acc.available && acc.lastSkipReason === "auth"
+                      ? " · 登录失效"
+                      : ""}
+                    {acc.available ? " · 可用" : ""}
+                  </div>
+                  <button
+                    className="btn btn-ghost !py-1 !text-xs"
+                    onClick={() => removeCampAccount(acc.userId)}
+                    disabled={campLoading}
+                  >
+                    移除
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : (
           <p className="text-sm text-[var(--crimson)]">未登录营地，查询战绩前请先扫码。</p>
         )}

@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/admin-auth";
-import { handleRouteError, jsonOk } from "@/lib/api";
-import { clearCampAuth, getCampAuthStatus } from "@/lib/camp";
+import { handleRouteError, jsonError, jsonOk } from "@/lib/api";
+import { clearCampAuth, getCampAuthStatus, removeCampAuth } from "@/lib/camp";
 
 export async function GET() {
   try {
@@ -11,11 +11,20 @@ export async function GET() {
   }
 }
 
-export async function DELETE() {
+/** DELETE: 清除全部；带 ?userId= 则只删该账号 */
+export async function DELETE(req: Request) {
   try {
     await requireAdmin();
-    clearCampAuth();
-    return jsonOk({ loggedIn: false });
+    const userId = new URL(req.url).searchParams.get("userId")?.trim();
+    if (!userId) {
+      clearCampAuth();
+      return jsonOk(getCampAuthStatus());
+    }
+
+    if (!removeCampAuth(userId)) {
+      return jsonError("未找到该营地账号", 404);
+    }
+    return jsonOk(getCampAuthStatus());
   } catch (err) {
     return handleRouteError(err);
   }

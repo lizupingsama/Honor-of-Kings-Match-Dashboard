@@ -34,10 +34,12 @@ export async function GET(req: Request) {
     const result = await pollWechatLoginOnce(taskId);
 
     if (result.status === "success") {
+      // upsert：多账号并存，同 userId 则更新
       writeCampAuth(result.account);
       return jsonOk({
         status: "success" as const,
         auth: getCampAuthStatus(),
+        addedUserId: result.account.userId,
       });
     }
 

@@ -1,6 +1,11 @@
 import crypto from "node:crypto";
 import { decrypt as xxteaDecrypt, encrypt as xxteaEncrypt } from "./xxtea";
-import { requireCampAuth, type CampAuthAccount } from "./auth-store";
+import {
+  listCampAuthAccounts,
+  markCampAuthCooldown,
+  pickAvailableCampAuth,
+  type CampAuthAccount,
+} from "./auth-store";
 import { DEFAULT_PUBLIC_KEY } from "./wechat-login";
 
 const MAIN_BASE = "https://kohcamp.qq.com";
@@ -253,8 +258,7 @@ function isAuthFailure(data: Record<string, unknown>) {
   return /登录|登录态|token|鉴权|安全参数|重新登录|权限/i.test(msg);
 }
 
-async function request(endpoint: string, body: Record<string, unknown>) {
-  const account = requireCampAuth();
+async function requestOnce(account: CampAuthAccount, endpoint: string, body: Record<string, unknown>) {
   const auth = resolveAuth(account);
   if (!auth.token || !auth.userId || (!auth.userKey && !auth.encodeRes)) {
     throw new CampApiError("营地登录态不完整，请到管理后台重新扫码登录", "auth");
@@ -305,14 +309,43 @@ async function request(endpoint: string, body: Record<string, unknown>) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new CampApiError("营地接口请求超时", "upstream");
     }
-    if (err instanceof Error && err.message.includes("未找到营地登录态")) {
-      throw new CampApiError(err.message, "auth");
-    }
     throw new CampApiError(
       err instanceof Error ? err.message : "营地接口请求失败",
       "upstream",
     );
   }
+}
+
+/** 遇频控 / 登录失效时冷却当前账号并自动换号重试 */
+async function request(endpoint: string, body: Record<string, unknown>) {
+  const tried = new Set<string>();
+  let lastError: CampApiError | null = null;
+
+  while (true) {
+    const account = pickAvailableCampAuth(tried);
+    if (!account) break;
+
+    tried.add(account.userId);
+    try {
+      return await requestOnce(account, endpoint, body);
+    } catch (err) {
+      if (!(err instanceof CampApiError)) throw err;
+      lastError = err;
+      if (err.code === "rate_limit" || err.code === "auth") {
+        markCampAuthCooldown(account.userId, err.code);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (lastError) throw lastError;
+
+  const total = listCampAuthAccounts().length;
+  if (total > 0) {
+    throw new CampApiError("营地账号均处于冷却或不可用，请稍后重试或添加新账号", "rate_limit");
+  }
+  throw new CampApiError("未找到营地登录态，请到管理后台扫码登录营地", "auth");
 }
 
 export async function getProfile(friendUserId: string) {
