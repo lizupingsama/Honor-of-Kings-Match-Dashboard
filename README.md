@@ -54,7 +54,7 @@
 ### 管理侧 `/admin`
 
 - 密码登录（默认见 `ADMIN_PASSWORD`）
-- **微信扫码登录王者营地**（使用 `camp` 数据源时必需）
+- **微信扫码登录王者营地**（使用 `camp` 数据源时必需；可添加多个账号，遇频控自动切换）
 - 手动新增 / 编辑 / 删除玩家
 - 单玩家同步、全量同步
 - 维护排位评分、巅峰评分与历史快照
@@ -123,7 +123,7 @@ npm run dev
 
 打开 [http://localhost:3000](http://localhost:3000)。
 
-**首次使用 `camp` 数据源前**，请到 [http://localhost:3000/admin](http://localhost:3000/admin) 用默认密码登录，并通过微信扫码登录王者营地。登录态写入 `data/camp-auth.json`（已 gitignore）。
+**首次使用 `camp` 数据源前**，请到 [http://localhost:3000/admin](http://localhost:3000/admin) 用默认密码登录，并通过微信扫码登录王者营地。可多次扫码添加多个账号；查询遇频控时会自动切换。登录态写入 `data/camp-auth.json`（已 gitignore）。
 
 ---
 
@@ -149,6 +149,7 @@ npm run dev
 | `WZRY_API_KEY` | （空） | 第三方 / 战力接口密钥（生产建议填写） |
 | `WZRY_POWER_API_BASE_URL` | `https://v1.apizero.cn/api/wzry` | 全国英雄战力查询 |
 | `CAMP_BATTLE_PAGE_DELAY_MS` | `400` | 营地战绩翻页间隔（毫秒，防频控） |
+| `CAMP_ACCOUNT_COOLDOWN_MS` | `300000` | 单账号被频控后的冷却毫秒；冷却期间自动换其它账号 |
 
 ### 同步与排行榜
 
@@ -181,7 +182,7 @@ npm run dev
 3. 首次查询会从上游同步并入库，随后跳转到 `/p/游戏昵称`。
 4. 已入库玩家也可从排行榜按昵称进入。
 
-若提示登录态失效，请管理员到 `/admin` 重新微信扫码登录营地。
+若提示登录态失效，请管理员到 `/admin` 重新扫码；建议多挂几个营地账号，遇频控会自动换号。
 
 ### 2. 浏览玩家页
 
@@ -221,7 +222,7 @@ ADMIN_PASSWORD=admin
 ```
 
 1. 访问 `/admin`，使用密码登录。
-2. **营地扫码登录**（`WZRY_API_PROVIDER=camp` 时必需）。
+2. **营地扫码登录**（`WZRY_API_PROVIDER=camp` 时必需）。可点「添加账号」多次扫码挂多个号；列表可查看可用 / 冷却状态并单独移除。
 3. 按需增删改玩家、维护评分 / 战力快照、触发同步。
 
 本地演示可改用 mock，无需扫码：
@@ -300,7 +301,7 @@ server {
 | 路径 | 内容 |
 |------|------|
 | SQLite 文件（如 `prisma/players.db`，取决于 `DATABASE_URL`） | 玩家与对局数据 |
-| `data/camp-auth.json` | 营地登录态（含 token，勿提交到 Git） |
+| `data/camp-auth.json` | 营地多账号登录态（含 token，勿提交到 Git） |
 
 ### 外部 Cron（可选）
 
@@ -322,7 +323,7 @@ curl -X POST \
 ### 生产检查清单
 
 - [ ] 修改默认 `ADMIN_PASSWORD`，建议单独设置 `ADMIN_SECRET`
-- [ ] `WZRY_API_PROVIDER=camp` 时完成营地扫码，并确认 `data/` 可写
+- [ ] `WZRY_API_PROVIDER=camp` 时完成营地扫码（建议多账号防频控），并确认 `data/` 可写
 - [ ] 生产环境为战力接口配置 `WZRY_API_KEY`（如使用默认上游）
 - [ ] 子路径部署时正确设置 `NEXT_BASE_PATH` 并重新 build
 - [ ] 代理层勿缓存 `/api` 与动态页面
@@ -405,20 +406,23 @@ GET /api/leaderboard?type=equipment&category=physical&area=all&limit=50&offset=0
 
 | Provider | 说明 |
 |----------|------|
-| `camp`（推荐） | 直连王者营地官方接口（`kohcamp.qq.com`），需管理后台扫码 |
+| `camp`（推荐） | 直连王者营地官方接口（`kohcamp.qq.com`），需管理后台扫码；支持多账号，频控时自动切换 |
 | `mock` | 本地演示，可用昵称等模拟数据 |
 | `apizero` / `apibyte` / `yujn` | 第三方备用战绩接口，通常需 `WZRY_API_KEY` |
 
 全国英雄战力（`/hero-power`）独立走极数本源类战力接口，与战绩 provider 可分开配置。
 
-营地登录态路径：`data/camp-auth.json`。过期后重新扫码即可。
+营地登录态路径：`data/camp-auth.json`（账号列表）。某号失效或被频控后可重新扫码添加；全部不可用时才会查询失败。
 
 ---
 
 ## 常见问题
 
 **Q: 查询提示登录态失效？**  
-A: 到 `/admin` 重新微信扫码登录营地。确认 `data/` 目录可写且未被误删。
+A: 到 `/admin` 重新微信扫码登录营地，或添加其它可用账号。确认 `data/` 目录可写且未被误删。
+
+**Q: 查询提示操作频繁 / 被风控？**  
+A: 在 `/admin` 用「添加账号」挂多个营地号。单个账号触发频控后会冷却一段时间并自动换号继续查询；可用 `CAMP_ACCOUNT_COOLDOWN_MS` 调整冷却时长。
 
 **Q: 子路径下页面能开但 API 404？**  
 A: 确认构建时设置了 `NEXT_BASE_PATH`，且反向代理把带 basePath 的请求转到 Node。修改 basePath 后必须重新 `npm run build`。

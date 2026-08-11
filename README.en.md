@@ -54,7 +54,7 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 ### Admin `/admin`
 
 - Password login (see `ADMIN_PASSWORD`)
-- **WeChat QR login to King of Glory Camp** (required when using the `camp` provider)
+- **WeChat QR login to King of Glory Camp** (required for `camp`; multiple accounts supported with automatic failover on rate limits)
 - Create / edit / delete players manually
 - Sync one player or all players
 - Maintain ranked / peak ratings and history snapshots
@@ -123,7 +123,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-**Before first use with the `camp` provider**, open [http://localhost:3000/admin](http://localhost:3000/admin), sign in with the default password, and complete WeChat QR login to Camp. Session data is stored in `data/camp-auth.json` (gitignored).
+**Before first use with the `camp` provider**, open [http://localhost:3000/admin](http://localhost:3000/admin), sign in with the default password, and complete WeChat QR login to Camp. You can scan multiple times to add accounts; lookups automatically switch when one is rate-limited. Session data is stored in `data/camp-auth.json` (gitignored).
 
 ---
 
@@ -149,6 +149,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `WZRY_API_KEY` | (empty) | API key for third-party / power APIs (recommended in prod) |
 | `WZRY_POWER_API_BASE_URL` | `https://v1.apizero.cn/api/wzry` | National hero-power API |
 | `CAMP_BATTLE_PAGE_DELAY_MS` | `400` | Delay between Camp battle pages (ms) |
+| `CAMP_ACCOUNT_COOLDOWN_MS` | `300000` | Cooldown after an account is rate-limited; other accounts are used meanwhile |
 
 ### Sync & leaderboard
 
@@ -181,7 +182,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 3. First lookup syncs from upstream, then navigates to `/p/{gameNickname}`.
 4. Existing players can also be opened from the leaderboard by nickname.
 
-If auth expires, an admin must re-scan the WeChat QR code at `/admin`.
+If auth expires, an admin should re-scan at `/admin`. Prefer adding several Camp accounts so rate-limited ones can fail over automatically.
 
 ### 2. Player page
 
@@ -221,7 +222,7 @@ ADMIN_PASSWORD=admin
 ```
 
 1. Visit `/admin` and log in.
-2. Complete **Camp QR login** (required for `WZRY_API_PROVIDER=camp`).
+2. Complete **Camp QR login** (required for `WZRY_API_PROVIDER=camp`). Use **Add account** to scan multiple accounts; the list shows available / cooling status and allows removing one account.
 3. Manage players, score / power snapshots, and sync jobs.
 
 For local demos without QR login:
@@ -297,7 +298,7 @@ server {
 | Path | Contents |
 |------|----------|
 | SQLite file (e.g. `prisma/players.db` depending on `DATABASE_URL`) | Players and matches |
-| `data/camp-auth.json` | Camp session (contains tokens; never commit) |
+| `data/camp-auth.json` | Camp multi-account sessions (contains tokens; never commit) |
 
 ### External cron (optional)
 
@@ -315,7 +316,7 @@ curl -X POST \
 ### Production checklist
 
 - [ ] Change default `ADMIN_PASSWORD`; set a dedicated `ADMIN_SECRET`
-- [ ] With `camp`, complete QR login and ensure `data/` is writable
+- [ ] With `camp`, complete QR login (prefer multiple accounts against rate limits) and ensure `data/` is writable
 - [ ] Set `WZRY_API_KEY` for the power API in production if you use the default upstream
 - [ ] Set `NEXT_BASE_PATH` correctly and rebuild for subpath deploys
 - [ ] Do not cache `/api` or dynamic pages at the proxy/CDN layer
@@ -398,20 +399,23 @@ The response includes `data.totalMatches` (matches with equipment data) and `dat
 
 | Provider | Notes |
 |----------|--------|
-| `camp` (recommended) | Official Camp API (`kohcamp.qq.com`); requires admin QR login |
+| `camp` (recommended) | Official Camp API (`kohcamp.qq.com`); admin QR login; multi-account with rate-limit failover |
 | `mock` | Local demo data |
 | `apizero` / `apibyte` / `yujn` | Third-party battle APIs; usually need `WZRY_API_KEY` |
 
 National hero power (`/hero-power`) uses a separate power API and can be configured independently of the battle provider.
 
-Camp session file: `data/camp-auth.json`. Re-scan when it expires.
+Camp session file: `data/camp-auth.json` (account list). Re-scan or add another account when one expires or is rate-limited; lookups fail only when none are usable.
 
 ---
 
 ## FAQ
 
 **Q: Lookup says session expired?**  
-A: Re-scan the WeChat QR code at `/admin`. Ensure `data/` is writable and not deleted.
+A: Re-scan the WeChat QR code at `/admin`, or add another available account. Ensure `data/` is writable and not deleted.
+
+**Q: Lookup says too frequent / rate-limited?**  
+A: At `/admin`, use **Add account** to attach more Camp accounts. A rate-limited account cools down for a while and requests automatically switch to the next one. Tune with `CAMP_ACCOUNT_COOLDOWN_MS`.
 
 **Q: Subpath UI loads but APIs 404?**  
 A: Build with `NEXT_BASE_PATH` set, and proxy requests including the basePath to Node. Rebuild after any basePath change.
