@@ -16,6 +16,7 @@ type Stats = {
 
 type IpRow = {
   ip: string;
+  geo: string | null;
   count: number;
   firstAt: string;
   lastAt: string;
@@ -268,6 +269,7 @@ export default function AdminVisitsPage() {
             <thead>
               <tr>
                 <th>IP</th>
+                <th>归属地</th>
                 <th>次数</th>
                 <th>最近访问</th>
                 <th>首次访问</th>
@@ -284,6 +286,9 @@ export default function AdminVisitsPage() {
                   title="点击查看该 IP 的访问明细"
                 >
                   <td className="font-mono">{row.ip}</td>
+                  <td className="max-w-[12rem] truncate text-[var(--muted)]" title={row.geo || undefined}>
+                    {row.geo || "–"}
+                  </td>
                   <td>{row.count.toLocaleString()}</td>
                   <td className="text-[var(--muted)]">{fmt(row.lastAt)}</td>
                   <td className="text-[var(--muted)]">{fmt(row.firstAt)}</td>
@@ -297,7 +302,7 @@ export default function AdminVisitsPage() {
               ))}
               {!ips.length && !loading && (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-[var(--muted)]">
+                  <td colSpan={7} className="py-6 text-center text-[var(--muted)]">
                     暂无记录
                   </td>
                 </tr>

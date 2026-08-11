@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { requireAdmin } from "@/lib/admin-auth";
 import { handleRouteError, jsonOk } from "@/lib/api";
 import { prisma } from "@/lib/db";
+import { lookupIpGeos } from "@/lib/ip-geo";
 import { MAX_VISITS } from "@/lib/visit-log";
 
 export const dynamic = "force-dynamic";
@@ -72,20 +73,24 @@ export async function GET(req: Request) {
       }),
     ]);
 
-    // 每个 IP 的最近一条记录（路径 / UA），一次查询取回
+    // 每个 IP 的最近一条记录（路径 / UA），一次查询取回；归属地离线解析
     const pageIps = groups.map((g) => g.ip);
-    const lastRows = pageIps.length
-      ? await prisma.visit.findMany({
-          where: { ...sourceWhere, ip: { in: pageIps } },
-          orderBy: { id: "desc" },
-          distinct: ["ip"],
-          select: { ip: true, path: true, userAgent: true },
-        })
-      : [];
+    const [lastRows, geoByIp] = await Promise.all([
+      pageIps.length
+        ? prisma.visit.findMany({
+            where: { ...sourceWhere, ip: { in: pageIps } },
+            orderBy: { id: "desc" },
+            distinct: ["ip"],
+            select: { ip: true, path: true, userAgent: true },
+          })
+        : Promise.resolve([]),
+      lookupIpGeos(pageIps),
+    ]);
     const lastByIp = new Map(lastRows.map((r) => [r.ip, r]));
 
     const ips = groups.map((g) => ({
       ip: g.ip,
+      geo: geoByIp.get(g.ip) ?? null,
       count: g._count._all,
       firstAt: g._min.createdAt,
       lastAt: g._max.createdAt,
