@@ -9,6 +9,8 @@ export type VisitInput = {
   userAgent?: string;
   referer?: string;
   xff?: string;
+  /** server=proxy 服务端记录（含爬虫）；beacon=浏览器 JS 上报（真实访客） */
+  source?: "server" | "beacon";
 };
 
 const clip = (v: string | undefined, max: number) =>
@@ -26,6 +28,7 @@ export async function recordVisit(input: VisitInput) {
       userAgent: clip(input.userAgent, 300) ?? null,
       referer: clip(input.referer, 300) ?? null,
       xff: clip(input.xff, 500) ?? null,
+      source: input.source === "beacon" ? "beacon" : "server",
     },
     select: { id: true },
   });

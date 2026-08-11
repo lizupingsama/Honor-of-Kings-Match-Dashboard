@@ -3,6 +3,7 @@ import { Noto_Sans_SC, ZCOOL_XiaoWei } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { BasePathProvider } from "@/components/base-path-provider";
+import { TrackBeacon } from "@/components/track-beacon";
 
 const display = Noto_Sans_SC({
   variable: "--font-display",
@@ -43,6 +44,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col antialiased">
         <BasePathProvider basePath={basePath}>
+          <TrackBeacon />
           <SiteHeader />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
           <footer className="border-t border-[var(--line)] py-6 text-center text-xs text-[var(--muted)]">

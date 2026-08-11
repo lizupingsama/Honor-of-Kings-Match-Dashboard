@@ -226,10 +226,13 @@ model Visit {
   referer   String?
   /// 原始 X-Forwarded-For 链，排查伪造时用
   xff       String?
+  /// server=proxy 服务端记录（含爬虫）；beacon=浏览器 JS 上报（真实访客）
+  source    String   @default("server")
   createdAt DateTime @default(now())
 
   @@index([ip])
   @@index([createdAt])
+  @@index([source])
 }
 
 model SyncJob {

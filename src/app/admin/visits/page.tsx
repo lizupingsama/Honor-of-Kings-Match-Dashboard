@@ -50,9 +50,17 @@ export default function AdminVisitsPage() {
   const [page, setPage] = useState(1);
   const [detailIp, setDetailIp] = useState("");
   const [clearing, setClearing] = useState(false);
+  /** beacon=真实访客（浏览器 JS 上报）；server=到源站的全部请求（含爬虫扫描器） */
+  const [view, setView] = useState<"beacon" | "server">("beacon");
 
   const load = useCallback(
-    async (opts?: { q?: string; sort?: string; page?: number; ip?: string }) => {
+    async (opts?: {
+      q?: string;
+      sort?: string;
+      page?: number;
+      ip?: string;
+      view?: string;
+    }) => {
       setLoading(true);
       setError("");
       try {
@@ -61,6 +69,7 @@ export default function AdminVisitsPage() {
         const s = opts?.sort ?? sort;
         const p = opts?.page ?? page;
         const ip = opts?.ip ?? detailIp;
+        qs.set("source", opts?.view ?? view);
         if (query.trim()) qs.set("q", query.trim());
         qs.set("sort", s);
         qs.set("page", String(p));
@@ -85,7 +94,7 @@ export default function AdminVisitsPage() {
         setLoading(false);
       }
     },
-    [q, sort, page, detailIp, router],
+    [q, sort, page, detailIp, view, router],
   );
 
   useEffect(() => {
@@ -117,6 +126,14 @@ export default function AdminVisitsPage() {
     setSort(s);
     setPage(1);
     load({ sort: s, page: 1 });
+  }
+
+  function switchView(v: "beacon" | "server") {
+    if (v === view) return;
+    setView(v);
+    setPage(1);
+    setDetailIp("");
+    load({ view: v, page: 1, ip: "" });
   }
 
   function gotoPage(p: number) {
@@ -164,9 +181,26 @@ export default function AdminVisitsPage() {
           <h1 className="text-2xl font-semibold text-[var(--gold-bright)]">IP 统计</h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
             记录访客真实 IP（经 CDN 还原），滚动保留最近 {(stats?.max ?? 100000).toLocaleString()} 条。
+            {view === "beacon"
+              ? "当前视图：真实访客——浏览器执行 JS 上报，爬虫扫描器基本进不来。"
+              : "当前视图：全部请求——凡到达源站的页面请求都算，包含爬虫与扫描器。"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <div className="flex gap-1">
+            <button
+              className={`btn !py-2 ${view === "beacon" ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => switchView("beacon")}
+            >
+              真实访客
+            </button>
+            <button
+              className={`btn !py-2 ${view === "server" ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => switchView("server")}
+            >
+              全部请求
+            </button>
+          </div>
           <Link className="btn btn-ghost !py-2" href="/admin">
             返回后台
           </Link>
