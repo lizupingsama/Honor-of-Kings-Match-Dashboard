@@ -5,7 +5,7 @@ import {
   type FetchResult,
   type NormalizedMatch,
 } from "./wzry-api";
-import { parseRankScore } from "./rank";
+import { MAX_PLAUSIBLE_STAR_DELTA, parseRankScore, rankScoreFromCode } from "./rank";
 import { clampRating } from "./rating";
 import { recordHeroPowerSnapshot, recordScoreSnapshot } from "./score-history";
 import { CampApiError, CAMP_BATTLE_SYNC_MAX_MATCHES } from "./camp/camp-api";
@@ -358,7 +358,8 @@ async function persistFetchResult(
   // 单条 upsert 逐场往返太慢（一次同步 80–160 场），统一放进一个事务批量提交
   const upserts = result.matches.map((m) => {
     const mRankScore =
-      m.rankName != null ? parseRankScore(m.rankName, m.stars ?? 0) : null;
+      rankScoreFromCode(m.rankCode, m.stars ?? 0) ??
+      (m.rankName != null ? parseRankScore(m.rankName, m.stars ?? 0) : null);
 
     return prisma.match.upsert({
       where: {
@@ -385,6 +386,7 @@ async function persistFetchResult(
         durationSec: m.durationSec,
         rankName: m.rankName,
         stars: m.stars,
+        rankCode: m.rankCode,
         rankScore: mRankScore ?? undefined,
         peakScore: m.peakScore ?? null,
         peakDelta: m.peakDelta ?? null,
@@ -422,6 +424,7 @@ async function persistFetchResult(
         durationSec: m.durationSec,
         rankName: m.rankName,
         stars: m.stars,
+        rankCode: m.rankCode,
         rankScore: mRankScore ?? undefined,
         peakScore: m.peakScore ?? null,
         peakDelta: m.peakDelta ?? null,
@@ -529,21 +532,33 @@ async function recomputeRankDeltas(playerId: string) {
   const ranked = await prisma.match.findMany({
     where: { playerId, mode: "ranked" },
     orderBy: { playedAt: "asc" },
-    select: { id: true, rankName: true, stars: true, rankScore: true, rankDelta: true },
+    select: {
+      id: true,
+      rankName: true,
+      stars: true,
+      rankCode: true,
+      rankScore: true,
+      rankDelta: true,
+    },
   });
 
-  // 分数一律从段位名+星数重算，历史上按旧刻度入库的 rankScore 会被顺带修正
+  // 分数一律重算：优先对局段位代码，缺代码时回退段位名；旧刻度入库的 rankScore 顺带修正
   const rows = ranked
     .map((m) => ({
       ...m,
-      score: m.rankName != null ? parseRankScore(m.rankName, m.stars ?? 0) : m.rankScore,
+      score:
+        rankScoreFromCode(m.rankCode, m.stars ?? 0) ??
+        (m.rankName != null ? parseRankScore(m.rankName, m.stars ?? 0) : m.rankScore),
     }))
     .filter((m): m is typeof m & { score: number } => m.score != null);
 
   // 只更新有变化的行，并在一个事务里批量提交
   const ops = [];
   for (let i = 0; i < rows.length; i++) {
-    const delta = i === 0 ? null : rows[i].score - rows[i - 1].score;
+    const rawDelta = i === 0 ? null : rows[i].score - rows[i - 1].score;
+    // 赛季重置/王者段位继承的掉段不是本场星数变化，按断点置空
+    const delta =
+      rawDelta != null && Math.abs(rawDelta) > MAX_PLAUSIBLE_STAR_DELTA ? null : rawDelta;
     if (rows[i].rankDelta === delta && rows[i].rankScore === rows[i].score) continue;
     ops.push(
       prisma.match.update({

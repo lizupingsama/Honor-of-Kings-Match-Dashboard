@@ -9,6 +9,7 @@ import {
   getSeasonpage,
 } from "./camp-api";
 import { resolveHeroName, stripControlChars } from "./hero-list";
+import { rankNameFromCode } from "../rank";
 import {
   detectMode,
   type FetchResult,
@@ -550,7 +551,13 @@ async function mapBattleRow(
         ? Number(row.score)
         : undefined;
   const honors = parseBattleHonors(row);
-  const rankText = String(row.roleJobName || row.rankName || "") || undefined;
+  const rankCodeRaw = row.roleJob != null ? Number(row.roleJob) : NaN;
+  const rankCode = Number.isFinite(rankCodeRaw) ? rankCodeRaw : undefined;
+  // roleJobName 是拉取时的当前段位而非对局时段位，已知代码时按 roleJob 还原
+  const rankText =
+    rankNameFromCode(rankCode) ||
+    String(row.roleJobName || row.rankName || "") ||
+    undefined;
   const stars =
     row.stars != null
       ? Number(row.stars)
@@ -606,6 +613,7 @@ async function mapBattleRow(
     durationSec: Number.isFinite(durationSec as number) ? durationSec : undefined,
     rankName: rankText,
     stars: Number.isFinite(stars as number) ? stars : undefined,
+    rankCode,
     peakScore,
     peakDelta,
     mvp: honors.mvp,

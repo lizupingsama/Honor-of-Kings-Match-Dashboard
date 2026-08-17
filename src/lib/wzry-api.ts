@@ -21,6 +21,8 @@ export type NormalizedMatch = {
   durationSec?: number;
   rankName?: string;
   stars?: number;
+  /** 对局段位代码（营地 roleJob，跟随对局；rankName 可能是拉取时的当前段位） */
+  rankCode?: number;
   /** 巅峰赛积分（对局结束后） */
   peakScore?: number;
   /** 本场巅峰分变化（new - old） */

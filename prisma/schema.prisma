@@ -132,6 +132,8 @@ model Match {
   durationSec Int?
   rankName    String?
   stars       Int?
+  /// 对局段位代码（营地 roleJob；rankName 是拉取时段位，只有它跟随对局）
+  rankCode    Int?
   rankScore   Int?
   /// 巅峰赛积分（对局后）
   peakScore   Int?

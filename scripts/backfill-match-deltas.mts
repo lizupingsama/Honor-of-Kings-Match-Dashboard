@@ -1,5 +1,10 @@
 import { PrismaClient } from "@prisma/client";
-import { parseRankScore } from "../src/lib/rank";
+import {
+  MAX_PLAUSIBLE_STAR_DELTA,
+  parseRankScore,
+  rankNameFromCode,
+  rankScoreFromCode,
+} from "../src/lib/rank";
 
 const prisma = new PrismaClient();
 
@@ -41,23 +46,49 @@ async function backfillRankDeltas() {
     const ranked = await prisma.match.findMany({
       where: { playerId, mode: "ranked" },
       orderBy: { playedAt: "asc" },
-      select: { id: true, rankName: true, stars: true, rankScore: true },
+      select: {
+        id: true,
+        rankName: true,
+        stars: true,
+        rankCode: true,
+        rankScore: true,
+        rawJson: true,
+      },
     });
 
-    // 分数一律从段位名+星数重算（旧版按错误刻度入库的 rankScore 需要覆盖）
+    // 分数一律重算：优先 rawJson 里的对局段位代码 roleJob（rankName 是拉取时
+    // 的当前段位，不跟随对局），缺代码时才回退段位名+星数
     let prevScore: number | null = null;
     for (let i = 0; i < ranked.length; i++) {
       const cur = ranked[i];
+
+      let rankCode = cur.rankCode;
+      if (rankCode == null && cur.rawJson) {
+        try {
+          const raw = JSON.parse(cur.rawJson) as Record<string, unknown>;
+          const parsed = raw.roleJob != null ? Number(raw.roleJob) : NaN;
+          if (Number.isFinite(parsed)) rankCode = parsed;
+        } catch {
+          // skip bad json
+        }
+      }
+
       const score =
-        cur.rankName != null ? parseRankScore(cur.rankName, cur.stars ?? 0) : cur.rankScore;
+        rankScoreFromCode(rankCode, cur.stars ?? 0) ??
+        (cur.rankName != null ? parseRankScore(cur.rankName, cur.stars ?? 0) : cur.rankScore);
       if (score == null) continue;
 
-      const delta = prevScore == null ? null : score - prevScore;
+      const rawDelta = prevScore == null ? null : score - prevScore;
+      // 赛季重置/王者段位继承的掉段不是本场星数变化，按断点置空
+      const delta =
+        rawDelta != null && Math.abs(rawDelta) > MAX_PLAUSIBLE_STAR_DELTA ? null : rawDelta;
       prevScore = score;
 
       await prisma.match.update({
         where: { id: cur.id },
         data: {
+          rankCode,
+          rankName: rankNameFromCode(rankCode) ?? cur.rankName,
           rankScore: score,
           rankDelta: delta,
         },

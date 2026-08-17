@@ -59,6 +59,60 @@ function parseTier(name: string): number | null {
   return null;
 }
 
+/**
+ * 对局侧段位代码（营地战绩列表的 roleJob）。战绩行里的 roleJobName 是"拉取时"
+ * 的当前段位而非对局时段位，只有 roleJob 跟随对局。编码不连续，顺序由全库
+ * 升降段相邻场次实证（5星→下一代码1星 晋级、0星→上一代码4星 降级均吻合）：
+ * 钻石 V–I = 20,21,13,14,15 → 星耀 V–I = 22–26 → 王者 = 16（星数直接累计）。
+ * 钻石以下的代码没有实测数据，遇到时返回 null，由调用方回退到按段位名解析。
+ */
+const KING_RANK_CODE = 16;
+
+const MATCH_RANK_CODES: Record<number, { name: string; base: number }> = (() => {
+  const ladder: Array<[number, string]> = [
+    [20, "永恒钻石V"],
+    [21, "永恒钻石IV"],
+    [13, "永恒钻石III"],
+    [14, "永恒钻石II"],
+    [15, "永恒钻石I"],
+    [22, "至尊星耀V"],
+    [23, "至尊星耀IV"],
+    [24, "至尊星耀III"],
+    [25, "至尊星耀II"],
+    [26, "至尊星耀I"],
+  ];
+  const diamondBase = SUB_KING_RANKS.find((r) => r.key === "钻石")!.base;
+  const map: Record<number, { name: string; base: number }> = {};
+  ladder.forEach(([code, name], i) => {
+    map[code] = { name, base: diamondBase + i * 5 };
+  });
+  return map;
+})();
+
+/** 按对局段位代码换算累计星数分；未知代码返回 null（调用方回退段位名解析） */
+export function rankScoreFromCode(
+  code: number | null | undefined,
+  stars = 0,
+): number | null {
+  if (code == null) return null;
+  if (code === KING_RANK_CODE) return KING_BASE + Math.max(0, stars);
+  const info = MATCH_RANK_CODES[code];
+  if (!info) return null;
+  return info.base + Math.min(Math.max(stars, 0), 5);
+}
+
+/** 按对局段位代码还原段位名；王者(16)与未知代码返回 null（保留接口原名） */
+export function rankNameFromCode(code: number | null | undefined): string | null {
+  if (code == null) return null;
+  return MATCH_RANK_CODES[code]?.name ?? null;
+}
+
+/**
+ * 相邻两场排位的星数差超出该值视为断点（赛季重置/王者段位继承掉段），
+ * 不作为"本场星数变化"展示。单场合法变化最多 ±3 左右（连胜加星）。
+ */
+export const MAX_PLAUSIBLE_STAR_DELTA = 10;
+
 export function parseRankScore(rankName: string | null | undefined, stars = 0): number {
   if (!rankName) return 0;
   const name = stripRankStars(rankName.trim());
