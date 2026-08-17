@@ -1,55 +1,82 @@
-/** Map rank name + stars to a comparable score for charts & leaderboards */
+/** Map rank name + stars to a comparable score for charts & leaderboards.
+ *
+ * 分数 = 累计星数：青铜III 0星 = 0，每颗星 +1，一路累加到星耀I 满星 = 100，
+ * 王者 = 100 + 王者星数。这样相邻两场排位的分数差正好等于星数变化，
+ * 跨小段（星耀3 5星 → 星耀2 1星 = +1）和跨大段晋级也成立。
+ */
 
-const RANK_BASE: Record<string, number> = {
-  青铜: 0,
-  白银: 100,
-  黄金: 200,
-  铂金: 300,
-  黄金星耀: 300, // alias
-  钻石: 400,
-  星耀: 500,
-  王者: 600,
-  荣耀王者: 600,
-  最强王者: 600,
-};
+type RankDef = { key: string; tiers: number; starsPerTier: number; base: number };
 
-const TIER_OFFSET: Record<string, number> = {
-  III: 0,
-  II: 25,
-  I: 50,
-  "Ⅲ": 0,
-  "Ⅱ": 25,
-  "Ⅰ": 50,
-  三: 0,
-  二: 25,
-  一: 50,
-};
+// 王者以下段位结构：小段数 × 每小段星数（base 为该段位起点的累计星数）
+const SUB_KING_RANKS: RankDef[] = (() => {
+  const defs = [
+    { key: "青铜", tiers: 3, starsPerTier: 3 },
+    { key: "白银", tiers: 3, starsPerTier: 3 },
+    { key: "黄金", tiers: 4, starsPerTier: 4 },
+    { key: "铂金", tiers: 4, starsPerTier: 4 },
+    { key: "钻石", tiers: 5, starsPerTier: 5 },
+    { key: "星耀", tiers: 5, starsPerTier: 5 },
+  ];
+  let base = 0;
+  return defs.map((d) => {
+    const withBase = { ...d, base };
+    base += d.tiers * d.starsPerTier;
+    return withBase;
+  });
+})();
+
+// 星耀I 满星（累计 100 星）再赢一场 = 王者 1 星
+const KING_BASE = 100;
+
+// 小段位写法：ASCII 罗马数字（IV 在 I/V 前，避免子串误匹配）、罗马字符、中文、阿拉伯数字
+const TIER_TOKENS: Array<[string, number]> = [
+  ["IV", 4],
+  ["III", 3],
+  ["II", 2],
+  ["V", 5],
+  ["I", 1],
+  ["Ⅴ", 5],
+  ["Ⅳ", 4],
+  ["Ⅲ", 3],
+  ["Ⅱ", 2],
+  ["Ⅰ", 1],
+  ["五", 5],
+  ["四", 4],
+  ["三", 3],
+  ["二", 2],
+  ["一", 1],
+  ["5", 5],
+  ["4", 4],
+  ["3", 3],
+  ["2", 2],
+  ["1", 1],
+];
+
+function parseTier(name: string): number | null {
+  for (const [token, tier] of TIER_TOKENS) {
+    if (name.includes(token)) return tier;
+  }
+  return null;
+}
 
 export function parseRankScore(rankName: string | null | undefined, stars = 0): number {
   if (!rankName) return 0;
   const name = stripRankStars(rankName.trim());
   const embedded = rankName.match(/(\d+)\s*星\s*$/u);
-  const starCount =
-    stars > 0 ? stars : embedded ? Number(embedded[1]) : 0;
+  const starCount = stars > 0 ? stars : embedded ? Number(embedded[1]) : 0;
 
-  // 王者 / 荣耀王者 / 最强王者 — stars count directly
+  // 王者（最强/无双/绝世/至圣/荣耀王者）— 星数直接累计
   if (name.includes("王者")) {
-    const base = 600;
-    return base + Math.max(0, starCount);
+    return KING_BASE + Math.max(0, starCount);
   }
 
-  for (const [key, base] of Object.entries(RANK_BASE)) {
-    if (name.includes(key) && key !== "王者" && key !== "荣耀王者" && key !== "最强王者") {
-      let offset = 0;
-      for (const [tier, val] of Object.entries(TIER_OFFSET)) {
-        if (name.includes(tier)) {
-          offset = val;
-          break;
-        }
-      }
-      // Also match 青铜III style without space
-      return base + offset + Math.min(starCount, 24);
-    }
+  for (const rank of SUB_KING_RANKS) {
+    if (!name.includes(rank.key)) continue;
+    // 小段位数字越小段位越高（星耀5 最低、星耀1 最高），识别不出时按最低小段
+    const tier = parseTier(name) ?? rank.tiers;
+    const tierIdx = Math.min(Math.max(rank.tiers - tier, 0), rank.tiers - 1);
+    const starsInTier = Math.min(Math.max(starCount, 0), rank.starsPerTier);
+    return rank.base + tierIdx * rank.starsPerTier + starsInTier;
   }
 
   // Fallback: try numeric extraction
@@ -69,11 +96,13 @@ export function formatRankLabel(rankName: string | null | undefined, stars = 0):
 }
 
 export function scoreToApproxLabel(score: number): string {
-  if (score >= 600) return `王者 ${score - 600}星`;
-  if (score >= 500) return "星耀";
-  if (score >= 400) return "钻石";
-  if (score >= 300) return "铂金";
-  if (score >= 200) return "黄金";
-  if (score >= 100) return "白银";
-  return "青铜";
+  if (score >= KING_BASE) return `王者 ${score - KING_BASE}星`;
+  for (let i = SUB_KING_RANKS.length - 1; i >= 0; i--) {
+    const rank = SUB_KING_RANKS[i];
+    if (score < rank.base) continue;
+    const within = score - rank.base;
+    const tier = rank.tiers - Math.min(Math.floor(within / rank.starsPerTier), rank.tiers - 1);
+    return `${rank.key}${tier}`;
+  }
+  return "青铜3";
 }

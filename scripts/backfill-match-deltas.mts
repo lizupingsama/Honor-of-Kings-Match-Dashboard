@@ -44,19 +44,16 @@ async function backfillRankDeltas() {
       select: { id: true, rankName: true, stars: true, rankScore: true },
     });
 
+    // 分数一律从段位名+星数重算（旧版按错误刻度入库的 rankScore 需要覆盖）
+    let prevScore: number | null = null;
     for (let i = 0; i < ranked.length; i++) {
       const cur = ranked[i];
       const score =
-        cur.rankScore ??
-        (cur.rankName != null ? parseRankScore(cur.rankName, cur.stars ?? 0) : null);
+        cur.rankName != null ? parseRankScore(cur.rankName, cur.stars ?? 0) : cur.rankScore;
       if (score == null) continue;
 
-      const prev = i > 0 ? ranked[i - 1] : null;
-      const prevScore = prev
-        ? (prev.rankScore ??
-          (prev.rankName != null ? parseRankScore(prev.rankName, prev.stars ?? 0) : null))
-        : null;
       const delta = prevScore == null ? null : score - prevScore;
+      prevScore = score;
 
       await prisma.match.update({
         where: { id: cur.id },
@@ -71,7 +68,26 @@ async function backfillRankDeltas() {
   return updated;
 }
 
+async function backfillPlayerTierScores() {
+  const players = await prisma.player.findMany({
+    select: { id: true, currentRank: true, currentStars: true, tierScore: true },
+  });
+
+  let updated = 0;
+  for (const p of players) {
+    const tierScore = parseRankScore(p.currentRank, p.currentStars ?? 0);
+    if (tierScore === p.tierScore) continue;
+    await prisma.player.update({
+      where: { id: p.id },
+      data: { tierScore },
+    });
+    updated += 1;
+  }
+  return updated;
+}
+
 const peak = await backfillPeakDeltas();
 const rank = await backfillRankDeltas();
-console.log(`peakDelta updated: ${peak}, rankDelta updated: ${rank}`);
+const tiers = await backfillPlayerTierScores();
+console.log(`peakDelta updated: ${peak}, rankDelta updated: ${rank}, tierScore updated: ${tiers}`);
 await prisma.$disconnect();

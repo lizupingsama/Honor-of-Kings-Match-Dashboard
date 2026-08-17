@@ -524,24 +524,31 @@ async function trimMatchesToLatest(playerId: string, keep: number) {
   });
 }
 
-/** 按相邻排位场次的 rankScore 差写入 rankDelta（约等于星数变化） */
+/** 按相邻排位场次的累计星数差写入 rankDelta（即星数变化） */
 async function recomputeRankDeltas(playerId: string) {
   const ranked = await prisma.match.findMany({
-    where: { playerId, mode: "ranked", rankScore: { not: null } },
+    where: { playerId, mode: "ranked" },
     orderBy: { playedAt: "asc" },
-    select: { id: true, rankScore: true, rankDelta: true },
+    select: { id: true, rankName: true, stars: true, rankScore: true, rankDelta: true },
   });
 
-  // 只更新 delta 有变化的行，并在一个事务里批量提交（历史对局的 delta 通常已正确）
+  // 分数一律从段位名+星数重算，历史上按旧刻度入库的 rankScore 会被顺带修正
+  const rows = ranked
+    .map((m) => ({
+      ...m,
+      score: m.rankName != null ? parseRankScore(m.rankName, m.stars ?? 0) : m.rankScore,
+    }))
+    .filter((m): m is typeof m & { score: number } => m.score != null);
+
+  // 只更新有变化的行，并在一个事务里批量提交
   const ops = [];
-  for (let i = 0; i < ranked.length; i++) {
-    const delta =
-      i === 0 ? null : (ranked[i].rankScore as number) - (ranked[i - 1].rankScore as number);
-    if (ranked[i].rankDelta === delta) continue;
+  for (let i = 0; i < rows.length; i++) {
+    const delta = i === 0 ? null : rows[i].score - rows[i - 1].score;
+    if (rows[i].rankDelta === delta && rows[i].rankScore === rows[i].score) continue;
     ops.push(
       prisma.match.update({
-        where: { id: ranked[i].id },
-        data: { rankDelta: delta },
+        where: { id: rows[i].id },
+        data: { rankScore: rows[i].score, rankDelta: delta },
       }),
     );
   }
