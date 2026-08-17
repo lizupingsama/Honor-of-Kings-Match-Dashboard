@@ -54,3 +54,4 @@ next-env.d.ts
 
 # 营地登录态（含 token，勿提交）
 /data/
+__pycache__/
