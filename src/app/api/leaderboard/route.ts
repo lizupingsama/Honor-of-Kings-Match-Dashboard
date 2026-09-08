@@ -27,6 +27,7 @@ import {
   getHeroPowerSeries,
   type ScoreMetric,
 } from "@/lib/score-history";
+import { LEADERBOARD_SERIES_MAX_POINTS } from "@/lib/series";
 import { handleRouteError, jsonError, jsonOk } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { cached } from "@/lib/ttl-cache";
@@ -70,23 +71,25 @@ export async function GET(req: Request) {
 
     if (type === "series") {
       if (!nickname) return jsonError("请指定玩家", 400);
+      // 榜单内联曲线只取最近 N 个记录点，长历史不再全量下发
+      const seriesOpts = { limit: LEADERBOARD_SERIES_MAX_POINTS };
       if (metric === "combatPower") {
         if (!heroName) return jsonError("请指定英雄", 400);
-        const series = await getHeroPowerSeries(nickname, heroName);
+        const series = await getHeroPowerSeries(nickname, heroName, seriesOpts);
         return jsonOk({ nickname, metric, heroName, series });
       }
       if (metric === "tierScore") {
-        const series = await getTierScoreSeries(nickname);
+        const series = await getTierScoreSeries(nickname, seriesOpts);
         return jsonOk({ nickname, metric, series });
       }
       if (metric === "peakScore") {
-        const series = await getPeakMatchSeries(nickname);
+        const series = await getPeakMatchSeries(nickname, seriesOpts);
         return jsonOk({ nickname, metric, series });
       }
       if (!["rankScore", "peakRating", "winRate"].includes(metric)) {
         return jsonError("未知指标", 400);
       }
-      const series = await getPlayerScoreSeries(nickname, metric as ScoreMetric);
+      const series = await getPlayerScoreSeries(nickname, metric as ScoreMetric, seriesOpts);
       return jsonOk({ nickname, metric, series });
     }
 

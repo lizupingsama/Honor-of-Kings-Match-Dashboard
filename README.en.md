@@ -211,7 +211,7 @@ The in-app hero-power leaderboard and curves prefer per-match `fightPower` from 
 
 ### 4. Leaderboard
 
-Open `/leaderboard` and switch among rating / ranked / peak / hero power / win rate / avg score / KDA / contribution / medals / equipment, etc. Some boards support expandable history curves. The contribution board can sort by damage, taken damage, join rate, or economy/min. The medal board can sort by total or by top / gold / silver / bronze tier alone. The equipment board supports all, physical, magic, and defense categories.
+Open `/leaderboard` and switch among rating / ranked / peak / hero power / win rate / avg score / KDA / contribution / medals / equipment, etc. Some boards support expandable history curves, capped at the latest 50 points. The contribution board can sort by damage, taken damage, join rate, or economy/min. The medal board can sort by total or by top / gold / silver / bronze tier alone. The equipment board supports all, physical, magic, and defense categories.
 
 The equipment board counts only final items from each match. The same item is counted once per match; intermediate components such as Iron Sword, Large Rod, and Meteor are excluded. The all category also includes boots, jungle items, and support items. Appearance rate uses locally synced matches with equipment data as its denominator.
 

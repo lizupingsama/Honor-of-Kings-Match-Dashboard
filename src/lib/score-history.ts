@@ -3,6 +3,12 @@ import { clampRating, clampWinRate } from "./rating";
 
 export type ScoreMetric = "rankScore" | "peakRating" | "peakScore" | "winRate";
 
+/** 曲线查询选项 */
+export type SeriesQueryOpts = {
+  /** 只取最近 N 条：按时间倒序 take 后再翻回正序，避免全量拉取再截断 */
+  limit?: number;
+};
+
 export async function recordScoreSnapshot(
   playerId: string,
   opts: {
@@ -88,6 +94,7 @@ export async function recordHeroPowerSnapshot(
 export async function getPlayerScoreSeries(
   gameNickname: string,
   metric: ScoreMetric,
+  opts?: SeriesQueryOpts,
 ) {
   const player = await prisma.player.findUnique({
     where: { gameNickname },
@@ -107,7 +114,8 @@ export async function getPlayerScoreSeries(
       playerId: player.id,
       [metric]: { not: null },
     },
-    orderBy: { recordedAt: "asc" },
+    orderBy: { recordedAt: "desc" },
+    take: opts?.limit,
     select: {
       recordedAt: true,
       rankScore: true,
@@ -118,7 +126,7 @@ export async function getPlayerScoreSeries(
     },
   });
 
-  const series = rows.map((r) => ({
+  const series = rows.reverse().map((r) => ({
     t: r.recordedAt.toISOString(),
     value: r[metric] as number,
     source: r.source,
@@ -144,7 +152,7 @@ export async function getPlayerScoreSeries(
 }
 
 /** 段位曲线：与个人页一致，仅排位对局的段位换算分 */
-export async function getTierScoreSeries(gameNickname: string) {
+export async function getTierScoreSeries(gameNickname: string, opts?: SeriesQueryOpts) {
   const player = await prisma.player.findUnique({
     where: { gameNickname },
     select: { id: true, tierScore: true, currentRank: true, currentStars: true },
@@ -157,7 +165,8 @@ export async function getTierScoreSeries(gameNickname: string) {
       mode: "ranked",
       rankScore: { not: null },
     },
-    orderBy: { playedAt: "asc" },
+    orderBy: { playedAt: "desc" },
+    take: opts?.limit,
     select: {
       playedAt: true,
       rankScore: true,
@@ -169,7 +178,7 @@ export async function getTierScoreSeries(gameNickname: string) {
   });
 
   if (matches.length) {
-    return matches.map((m) => ({
+    return matches.reverse().map((m) => ({
       t: m.playedAt.toISOString(),
       value: m.rankScore as number,
       score: m.rankScore as number,
@@ -197,7 +206,7 @@ export async function getTierScoreSeries(gameNickname: string) {
 }
 
 /** 巅峰分曲线：与个人页一致，来自巅峰对局的 peakScore */
-export async function getPeakMatchSeries(gameNickname: string) {
+export async function getPeakMatchSeries(gameNickname: string, opts?: SeriesQueryOpts) {
   const player = await prisma.player.findUnique({
     where: { gameNickname },
     select: { id: true, peakScore: true },
@@ -210,7 +219,8 @@ export async function getPeakMatchSeries(gameNickname: string) {
       mode: "peak",
       peakScore: { not: null },
     },
-    orderBy: { playedAt: "asc" },
+    orderBy: { playedAt: "desc" },
+    take: opts?.limit,
     select: {
       playedAt: true,
       peakScore: true,
@@ -220,7 +230,7 @@ export async function getPeakMatchSeries(gameNickname: string) {
   });
 
   if (matches.length) {
-    return matches.map((m) => ({
+    return matches.reverse().map((m) => ({
       t: m.playedAt.toISOString(),
       value: m.peakScore as number,
       source: "sync",
@@ -241,7 +251,11 @@ export async function getPeakMatchSeries(gameNickname: string) {
   return [];
 }
 
-export async function getHeroPowerSeries(gameNickname: string, heroName: string) {
+export async function getHeroPowerSeries(
+  gameNickname: string,
+  heroName: string,
+  opts?: SeriesQueryOpts,
+) {
   const player = await prisma.player.findUnique({
     where: { gameNickname },
     select: { id: true },
@@ -255,7 +269,8 @@ export async function getHeroPowerSeries(gameNickname: string, heroName: string)
       heroName,
       combatPower: { gt: 0 },
     },
-    orderBy: { playedAt: "asc" },
+    orderBy: { playedAt: "desc" },
+    take: opts?.limit,
     select: {
       playedAt: true,
       combatPower: true,
@@ -263,7 +278,7 @@ export async function getHeroPowerSeries(gameNickname: string, heroName: string)
     },
   });
   if (matches.length) {
-    return matches.map((m) => ({
+    return matches.reverse().map((m) => ({
       t: m.playedAt.toISOString(),
       value: m.combatPower as number,
       source: "sync",
@@ -273,12 +288,13 @@ export async function getHeroPowerSeries(gameNickname: string, heroName: string)
 
   const rows = await prisma.heroPowerHistory.findMany({
     where: { playerId: player.id, heroName },
-    orderBy: { recordedAt: "asc" },
+    orderBy: { recordedAt: "desc" },
+    take: opts?.limit,
     select: { recordedAt: true, combatPower: true, source: true },
   });
 
   if (rows.length) {
-    return rows.map((r) => ({
+    return rows.reverse().map((r) => ({
       t: r.recordedAt.toISOString(),
       value: r.combatPower,
       source: r.source,

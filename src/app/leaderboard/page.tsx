@@ -9,6 +9,7 @@ import type { TrendPoint } from "@/components/score-trend-chart";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { apiFetch } from "@/lib/client-fetch";
 import { fmtK } from "@/lib/format";
+import { LEADERBOARD_SERIES_MAX_POINTS } from "@/lib/series";
 
 // recharts 体积大且曲线要点击展开才显示，按需加载
 const chartLoading = () => (
@@ -325,6 +326,15 @@ export default function LeaderboardPage() {
     if (type === "power") return `${hero} · 英雄战力曲线`;
     if (type === "winrate") return "胜率曲线";
     return "曲线";
+  }
+
+  /** 接口只返回最近 N 条；点数达到上限时在标题里提示，免得被当成全部历史 */
+  function chartPointsHint(cacheKey: string) {
+    const count =
+      (type === "rank" ? rankSeriesMap[cacheKey] : seriesMap[cacheKey])?.length ?? 0;
+    return count >= LEADERBOARD_SERIES_MAX_POINTS
+      ? `（最近 ${LEADERBOARD_SERIES_MAX_POINTS} 条记录）`
+      : "";
   }
 
   function cacheKeyFor(nickname: string, metric: ChartMetric) {
@@ -867,6 +877,7 @@ export default function LeaderboardPage() {
                       <div className="mt-4 border-t border-white/10 pt-4">
                         <div className="mb-2 text-sm text-[var(--muted)]">
                           {row.gameNickname} · {chartTitle()}
+                          {chartPointsHint(cacheKey)}
                         </div>
                         {seriesLoading === cacheKey ? (
                           <div className="py-10 text-center text-sm text-[var(--muted)]">
@@ -1226,6 +1237,7 @@ export default function LeaderboardPage() {
                           <div className="min-w-0 px-2">
                             <div className="mb-2 text-sm text-[var(--muted)]">
                               {row.gameNickname} · {chartTitle()}
+                              {chartPointsHint(cacheKey)}
                             </div>
                             {seriesLoading === cacheKey ? (
                               <div className="py-10 text-center text-sm text-[var(--muted)]">
