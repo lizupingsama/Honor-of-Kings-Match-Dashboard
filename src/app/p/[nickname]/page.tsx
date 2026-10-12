@@ -125,6 +125,8 @@ type DashData = {
 
 type HeroSort = "games" | "winRate" | "avgScore";
 
+const COLLAPSED_HERO_COUNT = 5;
+
 type StoredPlayerView = {
   range: string;
   mode: string;
@@ -132,6 +134,7 @@ type StoredPlayerView = {
   side: string;
   hero: string;
   heroSort: HeroSort;
+  heroesExpanded: boolean;
   matchPage: number;
   scrollY: number;
 };
@@ -177,6 +180,7 @@ function PlayerDashboard() {
   const [side, setSide] = useState("all");
   const [hero, setHero] = useState("");
   const [heroSort, setHeroSort] = useState<HeroSort>("games");
+  const [heroesExpanded, setHeroesExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
   const [matchPage, setMatchPage] = useState(1);
@@ -195,6 +199,7 @@ function PlayerDashboard() {
       if (cancelled) return;
       pagesRestoredRef.current = false;
       pendingRestoreRef.current = null;
+      setHeroesExpanded(Boolean(stored?.heroesExpanded));
       if (stored) {
         if (stored.range) setRange(stored.range);
         if (stored.mode) setMode(stored.mode);
@@ -234,6 +239,7 @@ function PlayerDashboard() {
         side,
         hero,
         heroSort,
+        heroesExpanded,
         matchPage,
         scrollY: window.scrollY,
       } satisfies StoredPlayerView),
@@ -392,6 +398,10 @@ function PlayerDashboard() {
     if (!data?.heroStats) return [];
     return [...data.heroStats].sort((a, b) => b[heroSort] - a[heroSort]);
   }, [data, heroSort]);
+
+  const visibleHeroes = heroesExpanded
+    ? sortedHeroes
+    : sortedHeroes.slice(0, COLLAPSED_HERO_COUNT);
 
   const rankPointCount = useMemo(
     () => data?.rankSeries.filter((p) => p.score != null).length ?? 0,
@@ -571,17 +581,32 @@ function PlayerDashboard() {
       <section className="panel p-5 fade-in">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-semibold text-[var(--gold-bright)]">英雄使用</h2>
-          <select
-            className="input !w-auto max-sm:w-full"
-            value={heroSort}
-            onChange={(e) => setHeroSort(e.target.value as typeof heroSort)}
-          >
-            <option value="games">按场次</option>
-            <option value="winRate">按胜率</option>
-            <option value="avgScore">按评分</option>
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="input !w-auto max-sm:w-full"
+              value={heroSort}
+              onChange={(e) => setHeroSort(e.target.value as typeof heroSort)}
+            >
+              <option value="games">按场次</option>
+              <option value="winRate">按胜率</option>
+              <option value="avgScore">按评分</option>
+            </select>
+            {sortedHeroes.length > COLLAPSED_HERO_COUNT && (
+              <button
+                type="button"
+                className="btn btn-ghost !px-3 !py-2 text-sm"
+                aria-expanded={heroesExpanded}
+                aria-controls="hero-usage-list"
+                onClick={() => setHeroesExpanded((expanded) => !expanded)}
+              >
+                {heroesExpanded ? "收起" : `展开全部（${sortedHeroes.length}）`}
+              </button>
+            )}
+          </div>
         </div>
-        <HeroGrid heroes={sortedHeroes} onSelect={selectHero} />
+        <div id="hero-usage-list">
+          <HeroGrid heroes={visibleHeroes} onSelect={selectHero} />
+        </div>
       </section>
 
       <section ref={matchesRef} className="panel scroll-mt-4 p-5 fade-in">
