@@ -59,7 +59,7 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 - Sync one player or all players
 - Maintain ranked / peak ratings and history snapshots
 - Maintain per-hero combat power and history (custom record time for charts)
-- Add, pause, collect immediately, or remove hero + server monitors at `/admin/hero-power`
+- Add, pause, collect immediately, remove, and inspect collection curves for hero + server monitors at `/admin/hero-power`
 
 ### Sync
 

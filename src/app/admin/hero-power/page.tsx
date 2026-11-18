@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import type { HeroMeta, PowerZone } from "@/lib/hero-power-api";
 import { apiFetch } from "@/lib/client-fetch";
+import { HeroPowerHistoryChart } from "@/components/hero-power-history-chart";
 
 type Snapshot = {
   id: string;
@@ -54,6 +55,7 @@ export default function HeroPowerAdminPage() {
   const [intervalHours, setIntervalHours] = useState(8);
   const [heroId, setHeroId] = useState("");
   const [zone, setZone] = useState<PowerZone>("aqq");
+  const [selectedMonitorId, setSelectedMonitorId] = useState("");
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -145,6 +147,22 @@ export default function HeroPowerAdminPage() {
     () => heroes.find((hero) => hero.ename === heroId) || null,
     [heroes, heroId],
   );
+  const selectedMonitor = useMemo(
+    () =>
+      monitors.find((monitor) => monitor.id === selectedMonitorId) ||
+      monitors[0] ||
+      null,
+    [monitors, selectedMonitorId],
+  );
+
+  function showMonitorCurve(monitor: Monitor) {
+    setSelectedMonitorId(monitor.id);
+    requestAnimationFrame(() => {
+      document
+        .getElementById("hero-power-monitor-chart")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   async function onAdd(event: FormEvent) {
     event.preventDefault();
@@ -177,6 +195,7 @@ export default function HeroPowerAdminPage() {
       } else {
         setMessage(`已添加「${selectedHero?.name || heroId}」，首次采集失败，可稍后手动重试`);
       }
+      setSelectedMonitorId(json.data.monitor.id);
       setHeroId("");
       await loadMonitors();
     } catch {
@@ -340,6 +359,29 @@ export default function HeroPowerAdminPage() {
       {error && <p className="text-sm text-[var(--crimson)]">{error}</p>}
       {message && <p className="text-sm text-[var(--teal)]">{message}</p>}
 
+      {selectedMonitor && (
+        <div id="hero-power-monitor-chart" className="scroll-mt-6 space-y-2">
+          <div className="flex flex-wrap items-end justify-between gap-2 px-1">
+            <div>
+              <h2 className="text-lg font-medium text-[var(--gold-bright)]">
+                采集曲线
+              </h2>
+              <p className="mt-0.5 text-sm text-[var(--muted)]">
+                当前查看「{selectedMonitor.heroName} · {zoneLabel(selectedMonitor.zone)}」
+              </p>
+            </div>
+            <p className="text-xs text-[var(--muted)]">
+              点击下方列表中的「查看曲线」可切换监测项
+            </p>
+          </div>
+          <HeroPowerHistoryChart
+            key={`${selectedMonitor.id}-${selectedMonitor.latest?.id || "none"}`}
+            heroId={selectedMonitor.heroId}
+            zone={selectedMonitor.zone}
+          />
+        </div>
+      )}
+
       <div className="panel overflow-x-auto">
         {loading ? (
           <div className="p-8 text-center text-[var(--muted)]">加载中…</div>
@@ -437,6 +479,17 @@ export default function HeroPowerAdminPage() {
                     </td>
                     <td>
                       <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          className={`btn !px-3 !py-1 text-xs ${
+                            selectedMonitor?.id === monitor.id
+                              ? "btn-primary"
+                              : "btn-ghost"
+                          }`}
+                          onClick={() => showMonitorCurve(monitor)}
+                        >
+                          查看曲线
+                        </button>
                         <button
                           type="button"
                           className="btn btn-ghost !px-3 !py-1 text-xs"
