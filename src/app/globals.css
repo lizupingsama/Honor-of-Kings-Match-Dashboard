@@ -197,6 +197,15 @@ a {
   vertical-align: middle;
 }
 
+.table th.table-selection-cell,
+.table td.table-selection-cell {
+  width: 3.25rem;
+  min-width: 3.25rem;
+  padding-left: 0.75rem;
+  padding-right: 0.5rem;
+  text-align: center;
+}
+
 .fade-in {
   animation: fadeUp 0.45s ease both;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
@@ -70,6 +70,69 @@ const emptyForm = {
   seasonGames: 0,
 };
 
+function SelectionCheckbox({
+  checked,
+  indeterminate = false,
+  disabled = false,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  disabled?: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  const active = checked || indeterminate;
+
+  return (
+    <label
+      className={`group inline-flex h-6 w-6 items-center justify-center ${
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+      }`}
+    >
+      <input
+        ref={(input) => {
+          if (input) input.indeterminate = indeterminate;
+        }}
+        type="checkbox"
+        className="peer sr-only"
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        aria-label={label}
+      />
+      <span
+        aria-hidden="true"
+        className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border transition-colors duration-150 peer-focus-visible:ring-2 peer-focus-visible:ring-[rgba(212,175,106,0.35)] ${
+          active
+            ? "border-[var(--gold)] bg-[var(--gold)] text-[#171207]"
+            : "border-white/20 bg-[rgba(8,15,26,0.55)] group-hover:border-[rgba(212,175,106,0.55)]"
+        }`}
+      >
+        {indeterminate ? (
+          <span className="h-0.5 w-2 rounded-full bg-current" />
+        ) : checked ? (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 12 12"
+            className="h-3 w-3"
+            fill="none"
+          >
+            <path
+              d="m2.2 6.2 2.3 2.3 5.3-5.2"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        ) : null}
+      </span>
+    </label>
+  );
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
@@ -80,9 +143,9 @@ export default function AdminPage() {
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deletingSelected, setDeletingSelected] = useState(false);
-  const selectAllRef = useRef<HTMLInputElement>(null);
 
   const [campAuth, setCampAuth] = useState<CampAuthStatus | null>(null);
   const [campLoading, setCampLoading] = useState(false);
@@ -205,12 +268,6 @@ export default function AdminPage() {
   const allVisibleSelected =
     players.length > 0 && selectedPlayers.length === players.length;
   const someVisibleSelected = selectedPlayers.length > 0 && !allVisibleSelected;
-
-  useEffect(() => {
-    if (selectAllRef.current) {
-      selectAllRef.current.indeterminate = someVisibleSelected;
-    }
-  }, [someVisibleSelected]);
 
   async function startCampLogin() {
     setCampLoading(true);
@@ -391,6 +448,11 @@ export default function AdminPage() {
       }
       return next;
     });
+  }
+
+  function toggleSelectionMode() {
+    setSelectionMode((current) => !current);
+    setSelectedIds(new Set());
   }
 
   function toggleAllVisible() {
@@ -695,27 +757,50 @@ export default function AdminPage() {
         <button className="btn btn-ghost !py-2" onClick={() => load()}>
           搜索
         </button>
+        <button
+          className={`btn !py-2 ${selectionMode ? "btn-primary" : "btn-ghost"}`}
+          onClick={toggleSelectionMode}
+          disabled={loading || deletingSelected}
+        >
+          {selectionMode ? "退出多选" : "多选"}
+        </button>
       </div>
 
-      {selectedIds.size > 0 && (
+      {selectionMode && (
         <div className="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <p className="text-sm text-[var(--muted)]">
-            已选择 <span className="font-medium text-[var(--gold-bright)]">{selectedIds.size}</span> 名玩家
+            {selectedIds.size > 0 ? (
+              <>
+                已选择{" "}
+                <span className="font-medium text-[var(--gold-bright)]">
+                  {selectedIds.size}
+                </span>{" "}
+                名玩家
+              </>
+            ) : (
+              "多选模式：请选择要删除的玩家"
+            )}
           </p>
           <div className="flex flex-wrap gap-2">
-            <button
-              className="btn btn-ghost !px-3 !py-1.5 text-xs"
-              onClick={() => setSelectedIds(new Set())}
-              disabled={deletingSelected}
-            >
-              取消选择
-            </button>
+            {selectedIds.size > 0 && (
+              <button
+                className="btn btn-ghost !px-3 !py-1.5 text-xs"
+                onClick={() => setSelectedIds(new Set())}
+                disabled={deletingSelected}
+              >
+                清空选择
+              </button>
+            )}
             <button
               className="btn btn-danger !px-3 !py-1.5 text-xs"
               onClick={onDeleteSelected}
-              disabled={deletingSelected}
+              disabled={selectedIds.size === 0 || deletingSelected}
             >
-              {deletingSelected ? "删除中…" : `删除所选（${selectedIds.size}）`}
+              {deletingSelected
+                ? "删除中…"
+                : selectedIds.size > 0
+                  ? `删除所选（${selectedIds.size}）`
+                  : "删除所选"}
             </button>
           </div>
         </div>
@@ -732,17 +817,17 @@ export default function AdminPage() {
           <table className="table">
             <thead>
               <tr>
-                <th className="w-10">
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    className="h-4 w-4 cursor-pointer accent-[var(--gold)]"
-                    checked={allVisibleSelected}
-                    onChange={toggleAllVisible}
-                    disabled={deletingSelected}
-                    aria-label="全选当前列表玩家"
-                  />
-                </th>
+                {selectionMode && (
+                  <th className="table-selection-cell">
+                    <SelectionCheckbox
+                      checked={allVisibleSelected}
+                      indeterminate={someVisibleSelected}
+                      onChange={toggleAllVisible}
+                      disabled={deletingSelected}
+                      label="全选当前列表玩家"
+                    />
+                  </th>
+                )}
                 <th>王者名称</th>
                 <th>区服</th>
                 <th>排位评分</th>
@@ -757,16 +842,16 @@ export default function AdminPage() {
             <tbody>
               {players.map((p) => (
                 <tr key={p.id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 cursor-pointer accent-[var(--gold)]"
-                      checked={selectedIds.has(p.id)}
-                      onChange={() => togglePlayer(p.id)}
-                      disabled={deletingSelected}
-                      aria-label={`选择玩家 ${p.gameNickname}`}
-                    />
-                  </td>
+                  {selectionMode && (
+                    <td className="table-selection-cell">
+                      <SelectionCheckbox
+                        checked={selectedIds.has(p.id)}
+                        onChange={() => togglePlayer(p.id)}
+                        disabled={deletingSelected}
+                        label={`选择玩家 ${p.gameNickname}`}
+                      />
+                    </td>
+                  )}
                   <td>
                     <Link
                       href={`/admin/players/${p.id}`}
