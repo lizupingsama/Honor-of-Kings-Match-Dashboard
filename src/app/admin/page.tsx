@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
@@ -80,6 +80,9 @@ export default function AdminPage() {
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
   const [campAuth, setCampAuth] = useState<CampAuthStatus | null>(null);
   const [campLoading, setCampLoading] = useState(false);
@@ -108,6 +111,7 @@ export default function AdminPage() {
         return;
       }
       setPlayers(json.data.players || []);
+      setSelectedIds(new Set());
     } catch {
       setError("网络错误");
     } finally {
@@ -196,6 +200,17 @@ export default function AdminPage() {
       clearInterval(timer);
     };
   }, [qrTaskId]);
+
+  const selectedPlayers = players.filter((player) => selectedIds.has(player.id));
+  const allVisibleSelected =
+    players.length > 0 && selectedPlayers.length === players.length;
+  const someVisibleSelected = selectedPlayers.length > 0 && !allVisibleSelected;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someVisibleSelected;
+    }
+  }, [someVisibleSelected]);
 
   async function startCampLogin() {
     setCampLoading(true);
@@ -364,6 +379,69 @@ export default function AdminPage() {
       return;
     }
     await load();
+  }
+
+  function togglePlayer(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelectedIds((current) => {
+      if (allVisibleSelected) return new Set();
+      const next = new Set(current);
+      players.forEach((player) => next.add(player.id));
+      return next;
+    });
+  }
+
+  async function onDeleteSelected() {
+    const playersToDelete = players.filter((player) => selectedIds.has(player.id));
+    if (!playersToDelete.length) return;
+
+    const names = playersToDelete.map((player) => `「${player.gameNickname}」`);
+    const preview = names.slice(0, 5).join("、");
+    const suffix = names.length > 5 ? ` 等 ${names.length} 名玩家` : "";
+    if (
+      !confirm(
+        `确认删除${preview}${suffix}及其全部对局、评分历史和英雄战力数据？\n\n此操作不可恢复。`,
+      )
+    ) {
+      return;
+    }
+
+    setDeletingSelected(true);
+    setError("");
+    setSyncMessage("");
+    try {
+      const res = await apiFetch("/api/admin/players", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: playersToDelete.map((player) => player.id) }),
+      });
+      const json = await res.json();
+      if (res.status === 401) {
+        router.replace("/admin/login");
+        return;
+      }
+      if (!json.ok) {
+        setError(json.error || "批量删除失败");
+        return;
+      }
+      setSyncMessage(`已删除 ${json.data.deleted ?? 0} 名玩家`);
+      await load();
+    } catch {
+      setError("网络错误");
+    } finally {
+      setDeletingSelected(false);
+    }
   }
 
   if (!ready) {
@@ -606,7 +684,10 @@ export default function AdminPage() {
           className="input !w-auto min-w-[200px] flex-1"
           placeholder="搜索王者名称 / 营地 ID"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setSelectedIds(new Set());
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") load();
           }}
@@ -615,6 +696,30 @@ export default function AdminPage() {
           搜索
         </button>
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <p className="text-sm text-[var(--muted)]">
+            已选择 <span className="font-medium text-[var(--gold-bright)]">{selectedIds.size}</span> 名玩家
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="btn btn-ghost !px-3 !py-1.5 text-xs"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={deletingSelected}
+            >
+              取消选择
+            </button>
+            <button
+              className="btn btn-danger !px-3 !py-1.5 text-xs"
+              onClick={onDeleteSelected}
+              disabled={deletingSelected}
+            >
+              {deletingSelected ? "删除中…" : `删除所选（${selectedIds.size}）`}
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-sm text-[var(--crimson)]">{error}</p>}
 
@@ -627,6 +732,17 @@ export default function AdminPage() {
           <table className="table">
             <thead>
               <tr>
+                <th className="w-10">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer accent-[var(--gold)]"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                    disabled={deletingSelected}
+                    aria-label="全选当前列表玩家"
+                  />
+                </th>
                 <th>王者名称</th>
                 <th>区服</th>
                 <th>排位评分</th>
@@ -641,6 +757,16 @@ export default function AdminPage() {
             <tbody>
               {players.map((p) => (
                 <tr key={p.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer accent-[var(--gold)]"
+                      checked={selectedIds.has(p.id)}
+                      onChange={() => togglePlayer(p.id)}
+                      disabled={deletingSelected}
+                      aria-label={`选择玩家 ${p.gameNickname}`}
+                    />
+                  </td>
                   <td>
                     <Link
                       href={`/admin/players/${p.id}`}
@@ -685,6 +811,7 @@ export default function AdminPage() {
                       <button
                         className="btn btn-danger !px-3 !py-1 text-xs"
                         onClick={() => onDelete(p.id, p.gameNickname)}
+                        disabled={deletingSelected}
                       >
                         删除
                       </button>

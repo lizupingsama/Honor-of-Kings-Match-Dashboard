@@ -24,6 +24,13 @@ const createSchema = z.object({
   note: z.string().nullable().optional(),
 });
 
+const bulkDeleteSchema = z.object({
+  ids: z
+    .array(z.string().trim().min(1, "玩家 ID 不能为空"))
+    .min(1, "请选择要删除的玩家")
+    .max(200, "一次最多删除 200 名玩家"),
+});
+
 export async function GET(req: Request) {
   try {
     await requireAdmin();
@@ -54,6 +61,20 @@ export async function GET(req: Request) {
     });
 
     return jsonOk({ players });
+  } catch (err) {
+    return handleRouteError(err);
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    await requireAdmin();
+    const body = bulkDeleteSchema.parse(await req.json());
+    const ids = [...new Set(body.ids)];
+    const result = await prisma.player.deleteMany({
+      where: { id: { in: ids } },
+    });
+    return jsonOk({ deleted: result.count });
   } catch (err) {
     return handleRouteError(err);
   }
