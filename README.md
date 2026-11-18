@@ -36,7 +36,7 @@
 | 首页 `/` | 输入营地 ID（5–15 位数字）查询并同步战绩 |
 | 玩家页 `/p/王者名称` | 段位 / 巅峰曲线、英雄统计（含分均经济 / 场均输出承伤参团等）、对局列表（分页，本地最多保留 1000 场）；对局展示官方 MVP/SVP 图标与顶级 / 金 / 银 / 铜牌；支持点赞（每浏览器每天一次）；同步进度可轮询展示 |
 | 对局详情 `/matches/:id` | 单场明细：经济 / 输出 / 承伤（含占比）、参团率、奖牌、MVP/SVP、出装等 |
-| 英雄战力 `/hero-power` | 按英雄 + 区服查看全国省标 / 市标 / 县标门槛 |
+| 英雄战力 `/hero-power` | 按英雄 + 区服查看全国省标 / 市标 / 县标门槛；已监测英雄支持 8 小时 / 每天 / 每周战力折线 |
 | 站内排行榜 `/leaderboard` | 多维度独立榜单（见下） |
 
 **排行榜维度（相互独立）：**
@@ -59,6 +59,7 @@
 - 单玩家同步、全量同步
 - 维护排位评分、巅峰评分与历史快照
 - 按英雄维护战力与历史快照（指定录入时间，用于曲线图）
+- 在 `/admin/hero-power` 添加、暂停、立即采集或删除“英雄 + 区服”战力监测项
 
 ### 同步机制
 
@@ -67,6 +68,8 @@
 - `camp` 模式两阶段：先拉战绩列表入库，再逐场补全详情（出装、经济 / 输出 / 承伤占比、参团、对局战力等），详情写库后页面可逐步刷新
 - 进程内定时自动同步到期玩家（默认每小时，可关闭）
 - 可选 HTTP Cron：`GET/POST /api/cron/auto-sync`（可用 `CRON_SECRET` 鉴权）
+- 已监测英雄默认每 8 小时采集分省省标以及市 / 县标最低门槛；折线图可为省标单独选择省份。进程内每 5 分钟检查到期项，失败后同样等待 8 小时再重试
+- 无长期常驻进程时，可定时调用 `GET/POST /api/cron/hero-power`；接口按到期时间执行，多实例重复调用不会重复记录
 - `camp` 模式：每次向上游拉取最多约 8 页 / 100 条；增量与旧数据合并，本地最多保留 1000 条
 
 ---
@@ -148,6 +151,9 @@ npm run dev
 | `WZRY_API_BASE_URL` | 随 provider 变化 | 第三方备用接口基址 |
 | `WZRY_API_KEY` | （空） | 第三方 / 战力接口密钥（生产建议填写） |
 | `WZRY_POWER_API_BASE_URL` | `https://v1.apizero.cn/api/wzry` | 全国英雄战力查询 |
+| `HERO_POWER_MONITOR_ENABLED` | `true` | 是否启用进程内英雄战力定时监测 |
+| `HERO_POWER_MONITOR_INTERVAL_HOURS` | `8` | 英雄战力采集间隔（小时，最小 1） |
+| `HERO_POWER_MONITOR_CHECK_SECONDS` | `300` | 检查是否有到期监测项的轮询间隔（秒，最小 30） |
 | `CAMP_BATTLE_PAGE_DELAY_MS` | `400` | 营地战绩翻页间隔（毫秒，防频控） |
 | `CAMP_ACCOUNT_COOLDOWN_MS` | `300000` | 单账号被频控后的冷却毫秒；冷却期间自动换其它账号 |
 
@@ -160,7 +166,7 @@ npm run dev
 | `AUTO_SYNC_INTERVAL_SECONDS` | `3600` | 自动同步间隔（秒） |
 | `AUTO_SYNC_PLAYER_DELAY_SECONDS` | `5` | 每位玩家同步间隔（秒） |
 | `LEADERBOARD_MIN_GAMES` | `10` | 排行榜最低场次门槛 |
-| `CRON_SECRET` | （空） | 若设置，调用 `/api/cron/auto-sync` 需 `Authorization: Bearer <secret>` |
+| `CRON_SECRET` | （空） | 若设置，调用 `/api/cron/auto-sync` 或 `/api/cron/hero-power` 需 `Authorization: Bearer <secret>` |
 
 ---
 
@@ -205,7 +211,7 @@ npm run dev
 
 ### 3. 英雄战力查询
 
-打开 `/hero-power`，选择英雄与区服，查看全国省 / 市 / 县标门槛。该功能走独立战力接口，默认可匿名调用（生产建议配置 `WZRY_API_KEY`）。
+打开 `/hero-power`，选择英雄与区服，查看全国省 / 市 / 县标门槛。该功能走独立战力接口，默认可匿名调用（生产建议配置 `WZRY_API_KEY`）。若该英雄已在后台加入当前区服的监测，页面会展示战力门槛折线，可切换 8 小时、每天和每周跨度；省标模式下还可选择具体省份。
 
 站内「英雄战力榜」与曲线优先使用对局详情里的 `fightPower`（按对局时间），与全国门槛查询是不同数据源。
 
@@ -224,6 +230,7 @@ ADMIN_PASSWORD=admin
 1. 访问 `/admin`，使用密码登录。
 2. **营地扫码登录**（`WZRY_API_PROVIDER=camp` 时必需）。可点「添加账号」多次扫码挂多个号；列表可查看可用 / 冷却状态并单独移除。
 3. 按需增删改玩家、维护评分 / 战力快照、触发同步。
+4. 进入「战力监测」添加英雄，首次添加会立即采集一个数据点，之后按 8 小时间隔自动记录。
 
 本地演示可改用 mock，无需扫码：
 
@@ -348,7 +355,9 @@ GET /api/players/:nickname?range=30&mode=all&result=all&page=1
 | `GET` | `/api/leaderboard` | 排行榜 |
 | `GET` | `/api/hero-power/heroes` | 英雄列表 |
 | `GET` | `/api/hero-power/query` | 英雄战力门槛查询 |
+| `GET` | `/api/hero-power/history` | 已监测英雄的历史曲线（`heroId`、`zone`、`range=8h\|1d\|7d`） |
 | `GET/POST` | `/api/cron/auto-sync` | 触发到期玩家自动同步 |
+| `GET/POST` | `/api/cron/hero-power` | 触发到期的英雄战力采集 |
 | — | `/api/admin/*` | 管理端（需登录） |
 
 成功响应外层一般为：

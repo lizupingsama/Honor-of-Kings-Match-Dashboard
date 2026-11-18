@@ -9,41 +9,41 @@ datasource db {
 
 /// 以王者游戏昵称为单位的玩家档案（无需本站注册）
 model Player {
-  id            String  @id @default(cuid())
+  id            String    @id @default(cuid())
   /// 王者名称（展示与路由主键）
-  gameNickname  String  @unique
+  gameNickname  String    @unique
   /// 营地 ID（拉取战绩用，可与昵称相同哈希生成）
-  campId        String  @unique
-  area          String  @default("wechat") // wechat | qq
-  platform      String  @default("android")
+  campId        String    @unique
+  area          String    @default("wechat") // wechat | qq
+  platform      String    @default("android")
   gameAvatarUrl String?
   currentRank   String?
-  currentStars  Int     @default(0)
+  currentStars  Int       @default(0)
   /// 段位换算分（排位榜排序 / 段位曲线用，非 0-110 评分）
-  tierScore     Int     @default(0)
+  tierScore     Int       @default(0)
   /// 排位评分（0–110）
-  rankScore     Int     @default(0)
+  rankScore     Int       @default(0)
   /// 巅峰评分（0–110，不是巅峰分）
-  peakRating    Int     @default(0)
+  peakRating    Int       @default(0)
   /// 巅峰分（巅峰赛积分）
-  peakScore     Int     @default(0)
-  seasonWins    Int     @default(0)
-  seasonGames   Int     @default(0)
-  mvpCount      Int     @default(0)
-  goldCount     Int     @default(0)
+  peakScore     Int       @default(0)
+  seasonWins    Int       @default(0)
+  seasonGames   Int       @default(0)
+  mvpCount      Int       @default(0)
+  goldCount     Int       @default(0)
   lastSyncAt    DateTime?
   lastSyncError String?
-  queryCount    Int     @default(0)
+  queryCount    Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  matches           Match[]
-  heroStats         HeroStat[]
-  syncJobs          SyncJob[]
-  scoreHistories    ScoreHistory[]
+  matches            Match[]
+  heroStats          HeroStat[]
+  syncJobs           SyncJob[]
+  scoreHistories     ScoreHistory[]
   heroPowerHistories HeroPowerHistory[]
-  likes             PlayerLike[]
+  likes              PlayerLike[]
 
   @@index([tierScore])
   @@index([rankScore])
@@ -112,64 +112,107 @@ model HeroPowerHistory {
   @@index([heroName, combatPower])
 }
 
+/// 全国英雄战力监测配置：按英雄 + 区服定时采集省 / 市 / 县标最低门槛
+model HeroPowerMonitor {
+  id            String    @id @default(cuid())
+  heroId        String
+  heroName      String
+  heroAvatar    String?
+  /// aqq | awx | iqq | iwx
+  zone          String
+  enabled       Boolean   @default(true)
+  /// 采集间隔（小时），默认 8
+  intervalHours Int       @default(8)
+  lastAttemptAt DateTime?
+  lastSyncedAt  DateTime?
+  lastSyncError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  snapshots HeroPowerMonitorSnapshot[]
+
+  @@unique([heroId, zone])
+  @@index([enabled, lastAttemptAt])
+}
+
+/// 全国英雄战力监测快照：一次采集同时记录三个标级的最低门槛
+model HeroPowerMonitorSnapshot {
+  id            String           @id @default(cuid())
+  monitorId     String
+  monitor       HeroPowerMonitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  recordedAt    DateTime         @default(now())
+  /// 分省省标门槛 JSON，如 {"广东省":8871,"四川省":7600}
+  provincePowersJson String?
+  provincePower Int?
+  cityPower     Int?
+  districtPower Int?
+  /// auto | initial | manual
+  source        String           @default("auto")
+
+  createdAt DateTime @default(now())
+
+  @@index([monitorId, recordedAt])
+}
+
 model Match {
-  id          String   @id @default(cuid())
-  playerId    String
-  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  externalId  String
-  playedAt    DateTime
-  mode        String
-  modeName    String?
-  heroId      String?
-  heroName    String
-  heroIcon    String?
-  result      String
-  kills       Int      @default(0)
-  deaths      Int      @default(0)
-  assists     Int      @default(0)
-  score       Float?
-  evaluate    String?
-  durationSec Int?
-  rankName    String?
-  stars       Int?
+  id             String   @id @default(cuid())
+  playerId       String
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  externalId     String
+  playedAt       DateTime
+  mode           String
+  modeName       String?
+  heroId         String?
+  heroName       String
+  heroIcon       String?
+  result         String
+  kills          Int      @default(0)
+  deaths         Int      @default(0)
+  assists        Int      @default(0)
+  score          Float?
+  evaluate       String?
+  durationSec    Int?
+  rankName       String?
+  stars          Int?
   /// 对局段位代码（营地 roleJob；rankName 是拉取时段位，只有它跟随对局）
-  rankCode    Int?
-  rankScore   Int?
+  rankCode       Int?
+  rankScore      Int?
   /// 巅峰赛积分（对局后）
-  peakScore   Int?
+  peakScore      Int?
   /// 本场巅峰分变化（new - old）
-  peakDelta   Int?
+  peakDelta      Int?
   /// 本场排位星数变化（相对上一场排位的 rankScore 差）
-  rankDelta   Int?
-  mvp         Boolean  @default(false)
-  gold        Boolean  @default(false)
+  rankDelta      Int?
+  mvp            Boolean  @default(false)
+  gold           Boolean  @default(false)
   /// 奖牌文案，如 银牌打野 / 金牌中路
-  medal       String?
+  medal          String?
   /// 官方奖牌图标 URL（evaluateUrlV3）
-  medalIcon   String?
+  medalIcon      String?
   /// mvp | svp
-  mvpType     String?
+  mvpType        String?
   /// 官方 MVP/SVP 图标 URL（mvpUrlV3 / mvpUrlV2）
-  mvpIcon     String?
+  mvpIcon        String?
   /// 阵营：blue | red（来自营地 AcntCamp）
-  side        String?
-  economy     Int?
+  side           String?
+  economy        Int?
   /// 经济占本队比例（0–100，一位小数）
-  economyPct  Float?
-  damage      Int?
+  economyPct     Float?
+  damage         Int?
   /// 输出占本队比例（0–100，一位小数）
-  damagePct   Float?
+  damagePct      Float?
   /// 承伤英雄伤害（totalBeheroHurtCnt）
-  takenDamage Int?
+  takenDamage    Int?
   /// 承伤占本队比例（0–100，一位小数）
   takenDamagePct Float?
   /// 参团率（0–100，一位小数）
-  joinPct     Float?
+  joinPct        Float?
   /// 对局时该英雄战力（营地 fightPower）
-  combatPower Int?
+  combatPower    Int?
   /// 出装 JSON：[{equipId,equipIcon,equipName},...]
-  equipsJson  String?
-  rawJson     String?
+  equipsJson     String?
+  rawJson        String?
 
   createdAt DateTime @default(now())
 
@@ -182,32 +225,32 @@ model Match {
 }
 
 model HeroStat {
-  id          String  @id @default(cuid())
-  playerId    String
-  player      Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  heroId      String?
-  heroName    String
-  heroIcon    String?
+  id               String  @id @default(cuid())
+  playerId         String
+  player           Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  heroId           String?
+  heroName         String
+  heroIcon         String?
   /// 该英雄当前战力
-  combatPower Int     @default(0)
-  games       Int     @default(0)
-  wins        Int     @default(0)
-  kills       Int     @default(0)
-  deaths      Int     @default(0)
-  assists     Int     @default(0)
-  totalScore  Float   @default(0)
+  combatPower      Int     @default(0)
+  games            Int     @default(0)
+  wins             Int     @default(0)
+  kills            Int     @default(0)
+  deaths           Int     @default(0)
+  assists          Int     @default(0)
+  totalScore       Float   @default(0)
   /// 有评分的场次（算平均战绩用）
-  scoreGames  Int     @default(0)
+  scoreGames       Int     @default(0)
   /// 经济合计（仅含有经济数据的对局）
-  totalEconomy Int    @default(0)
+  totalEconomy     Int     @default(0)
   /// 对应 totalEconomy 的对局时长合计（秒），用于分均经济
-  totalDurationSec Int @default(0)
-  totalDamage Int     @default(0)
-  damageGames Int     @default(0)
-  totalTakenDamage Int @default(0)
-  takenGames  Int     @default(0)
-  totalJoinPct Float  @default(0)
-  joinGames   Int     @default(0)
+  totalDurationSec Int     @default(0)
+  totalDamage      Int     @default(0)
+  damageGames      Int     @default(0)
+  totalTakenDamage Int     @default(0)
+  takenGames       Int     @default(0)
+  totalJoinPct     Float   @default(0)
+  joinGames        Int     @default(0)
 
   updatedAt DateTime @updatedAt
 

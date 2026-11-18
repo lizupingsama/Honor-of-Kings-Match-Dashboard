@@ -36,7 +36,7 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 | Home `/` | Look up and sync stats by Camp ID (5–15 digits) |
 | Player `/p/{nickname}` | Rank / peak curves, hero stats (economy / damage / taken / join aggregates), paginated match list (up to 1000 stored locally); official MVP/SVP icons and top / gold / silver / bronze medals; likes (once per browser per day); pollable sync progress |
 | Match `/matches/:id` | Single-match detail: economy / damage / taken damage (with team %), join rate, medals, MVP/SVP, equips, etc. |
-| Hero power `/hero-power` | National province / city / county power thresholds by hero and server |
+| Hero power `/hero-power` | National province / city / county thresholds by hero and server; monitored heroes include 8-hour / daily / weekly line charts |
 | Leaderboard `/leaderboard` | Independent rankings (see below) |
 
 **Leaderboard dimensions (independent of each other):**
@@ -59,6 +59,7 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 - Sync one player or all players
 - Maintain ranked / peak ratings and history snapshots
 - Maintain per-hero combat power and history (custom record time for charts)
+- Add, pause, collect immediately, or remove hero + server monitors at `/admin/hero-power`
 
 ### Sync
 
@@ -67,6 +68,8 @@ A self-hosted dashboard for looking up Honor of Kings (王者荣耀) player stat
 - `camp` mode is two-phase: persist the battle list first, then enrich each match with detail (equips, economy / damage / taken %, join rate, per-match combat power); the UI can refresh as details land
 - In-process auto-sync of stale players (default hourly; can be disabled)
 - Optional HTTP cron: `GET/POST /api/cron/auto-sync` (protect with `CRON_SECRET`)
+- Monitored heroes capture province-specific province thresholds plus minimum city / county thresholds every 8 hours; failed attempts wait for the next 8-hour window
+- For deployments without a long-running process, call `GET/POST /api/cron/hero-power` from an external scheduler
 - `camp` mode: each upstream pull up to ~8 pages / 100 matches; incremental merge with local storage capped at 1000
 
 ---
@@ -148,6 +151,9 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `WZRY_API_BASE_URL` | provider-specific | Third-party battle API base URL |
 | `WZRY_API_KEY` | (empty) | API key for third-party / power APIs (recommended in prod) |
 | `WZRY_POWER_API_BASE_URL` | `https://v1.apizero.cn/api/wzry` | National hero-power API |
+| `HERO_POWER_MONITOR_ENABLED` | `true` | Enable in-process hero-power monitoring |
+| `HERO_POWER_MONITOR_INTERVAL_HOURS` | `8` | Collection interval in hours (minimum 1) |
+| `HERO_POWER_MONITOR_CHECK_SECONDS` | `300` | Poll interval for due monitors in seconds (minimum 30) |
 | `CAMP_BATTLE_PAGE_DELAY_MS` | `400` | Delay between Camp battle pages (ms) |
 | `CAMP_ACCOUNT_COOLDOWN_MS` | `300000` | Cooldown after an account is rate-limited; other accounts are used meanwhile |
 
@@ -160,7 +166,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `AUTO_SYNC_INTERVAL_SECONDS` | `3600` | Auto-sync interval (seconds) |
 | `AUTO_SYNC_PLAYER_DELAY_SECONDS` | `5` | Delay between players during auto-sync |
 | `LEADERBOARD_MIN_GAMES` | `10` | Minimum games for leaderboard eligibility |
-| `CRON_SECRET` | (empty) | If set, `/api/cron/auto-sync` requires `Authorization: Bearer <secret>` |
+| `CRON_SECRET` | (empty) | If set, `/api/cron/auto-sync` and `/api/cron/hero-power` require `Authorization: Bearer <secret>` |
 
 ---
 
@@ -205,7 +211,7 @@ These screenshots are from the deployed site [lizuping.love/wzry](https://lizupi
 
 ### 3. Hero power
 
-Open `/hero-power`, pick hero and server, view national province / city / county thresholds. Uses a separate power API (anonymous by default; set `WZRY_API_KEY` in production).
+Open `/hero-power`, pick hero and server, view national province / city / county thresholds. Uses a separate power API (anonymous by default; set `WZRY_API_KEY` in production). Monitored hero + server pairs also show line charts across 8 hours, one day, and one week; province mode includes a province selector.
 
 The in-app hero-power leaderboard and curves prefer per-match `fightPower` from battle detail (by match time), which is a different source from the national threshold query.
 
@@ -224,6 +230,7 @@ ADMIN_PASSWORD=admin
 1. Visit `/admin` and log in.
 2. Complete **Camp QR login** (required for `WZRY_API_PROVIDER=camp`). Use **Add account** to scan multiple accounts; the list shows available / cooling status and allows removing one account.
 3. Manage players, score / power snapshots, and sync jobs.
+4. Open **Hero power monitor** to add a hero; the first point is collected immediately and the rest every 8 hours.
 
 For local demos without QR login:
 
@@ -341,7 +348,9 @@ Selected endpoints:
 | `GET` | `/api/leaderboard` | Leaderboard |
 | `GET` | `/api/hero-power/heroes` | Hero list |
 | `GET` | `/api/hero-power/query` | Hero power thresholds |
+| `GET` | `/api/hero-power/history` | History for a monitored hero (`heroId`, `zone`, `range=8h\|1d\|7d`) |
 | `GET/POST` | `/api/cron/auto-sync` | Sync stale players |
+| `GET/POST` | `/api/cron/hero-power` | Run due hero-power monitors |
 | — | `/api/admin/*` | Admin APIs (auth required) |
 
 Typical success envelope:

@@ -526,6 +526,9 @@ export default function AdminPage() {
           <Link className="btn btn-ghost !py-2" href="/admin/visits">
             IP 统计
           </Link>
+          <Link className="btn btn-ghost !py-2" href="/admin/hero-power">
+            战力监测
+          </Link>
           <button className="btn btn-ghost !py-2" onClick={logout}>
             退出
           </button>

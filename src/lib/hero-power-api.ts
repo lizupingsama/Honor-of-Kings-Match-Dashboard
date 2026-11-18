@@ -58,6 +58,63 @@ export function getZoneLabel(zone: PowerZone) {
   return ZONE_LABEL[zone];
 }
 
+export type HeroPowerLevel = "province" | "city" | "district";
+
+export type HeroPowerMinima = Record<HeroPowerLevel, number | null>;
+
+export type HeroPowerCapture = {
+  minima: HeroPowerMinima;
+  provincePowers: Record<string, number>;
+};
+
+/**
+ * 全国战力接口会返回大量地区门槛。省标按省保存，市标 / 县标保留全国最低值。
+ */
+export function extractHeroPowerCapture(result: PowerQueryResult): HeroPowerCapture {
+  const minima: HeroPowerMinima = {
+    province: null,
+    city: null,
+    district: null,
+  };
+  const provincePowers: Record<string, number> = {};
+
+  for (const item of result.list) {
+    if (!(item.level in minima)) continue;
+    const level = item.level as HeroPowerLevel;
+    const value = Number(item.rank);
+    if (!Number.isFinite(value)) continue;
+
+    if (level === "province") {
+      const province = item.address.trim();
+      if (province) {
+        provincePowers[province] =
+          provincePowers[province] == null
+            ? value
+            : Math.min(provincePowers[province], value);
+      }
+    }
+    minima[level] = minima[level] == null ? value : Math.min(minima[level], value);
+  }
+
+  for (const level of Object.keys(minima) as HeroPowerLevel[]) {
+    const extreme = result.extreme?.[level]?.rank;
+    if (extreme == null || !Number.isFinite(extreme)) continue;
+    minima[level] = minima[level] == null ? extreme : Math.min(minima[level], extreme);
+    if (level === "province") {
+      const province = result.extreme?.province?.address.trim();
+      if (province && provincePowers[province] == null) {
+        provincePowers[province] = extreme;
+      }
+    }
+  }
+
+  return { minima, provincePowers };
+}
+
+export function extractHeroPowerMinima(result: PowerQueryResult): HeroPowerMinima {
+  return extractHeroPowerCapture(result).minima;
+}
+
 export function getHeroPowerApiBaseUrl() {
   return process.env.WZRY_POWER_API_BASE_URL || "https://v1.apizero.cn/api/wzry";
 }

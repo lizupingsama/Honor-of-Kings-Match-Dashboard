@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { HeroMeta, PowerQueryResult, PowerZone, RankItem } from "@/lib/hero-power-api";
 import { apiFetch } from "@/lib/client-fetch";
 import { filterHeroesByQuery, resolveHeroQuery } from "@/lib/hero-match";
+import { HeroPowerHistoryChart } from "@/components/hero-power-history-chart";
 
 const ZONES: { value: PowerZone; label: string }[] = [
   { value: "aqq", label: "安卓 QQ" },
@@ -63,11 +64,7 @@ export default function HeroPowerPage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<PowerQueryResult | null>(null);
   const [regionFilter, setRegionFilter] = useState("");
-  const [recentIds, setRecentIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    setRecentIds(loadRecentIds());
-  }, []);
+  const [recentIds, setRecentIds] = useState<string[]>(loadRecentIds);
 
   useEffect(() => {
     let cancelled = false;
@@ -288,6 +285,14 @@ export default function HeroPowerPage() {
         </div>
       </section>
 
+      {!result && heroId && (
+        <HeroPowerHistoryChart
+          key={`${heroId}-${zone}-standalone`}
+          heroId={heroId}
+          zone={zone}
+        />
+      )}
+
       {result && (
         <section className="fade-in space-y-4">
           <div className="panel flex flex-wrap items-center gap-4 px-5 py-4">
@@ -329,6 +334,14 @@ export default function HeroPowerPage() {
               </div>
             </div>
           </div>
+
+          {result.hero.ename && (
+            <HeroPowerHistoryChart
+              key={`${result.hero.ename}-${result.zone.code}`}
+              heroId={result.hero.ename}
+              zone={result.zone.code}
+            />
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex w-full gap-2 sm:w-auto">
